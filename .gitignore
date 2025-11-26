@@ -1,3 +1,7 @@
+##JKL Added
+# ignore data files
+twits/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
