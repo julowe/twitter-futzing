@@ -10,6 +10,9 @@ services:
     environment:
       - PORT=8080
       - SECRET_KEY=${SECRET_KEY:-}
+      # Set GUNICORN_WORKERS based on available CPU cores for production
+      # Recommended: 2 * num_cores + 1
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]

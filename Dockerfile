@@ -55,4 +55,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
 
 # Default command runs the web app
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "webapp:app"]
+# Workers can be configured via GUNICORN_WORKERS environment variable
+# Default: 2 workers, suitable for light loads. For production, set based on CPU cores (2*cores+1)
+CMD ["sh", "-c", "python -m gunicorn --bind 0.0.0.0:${PORT:-8080} --workers ${GUNICORN_WORKERS:-2} --timeout 120 webapp:app"]

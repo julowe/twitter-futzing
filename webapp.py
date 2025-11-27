@@ -35,10 +35,28 @@ from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
+# Secret key configuration - in production, always set SECRET_KEY environment variable
+# to a consistent value to preserve sessions across restarts
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    import warnings
+    warnings.warn(
+        "SECRET_KEY not set. Using randomly generated key. "
+        "Sessions will be invalidated on restart. "
+        "Set SECRET_KEY environment variable for production.",
+        RuntimeWarning
+    )
+    _secret_key = secrets.token_hex(32)
+app.secret_key = _secret_key
+
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
-# Store session data in memory (for demo; use Redis/DB in production)
+# Session data storage
+# NOTE: This in-memory storage is suitable for single-instance demo deployments.
+# For production with multiple workers/instances, use Redis, database, or
+# client-side session storage (e.g., Flask-Session with Redis backend).
+# Data is isolated per session ID and automatically cleaned on browser close.
 session_data: Dict[str, Dict] = {}
 
 ALLOWED_EXTENSIONS = {".js", ".json"}
