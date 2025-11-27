@@ -1,6 +1,7 @@
 ##JKL Added
 # ignore data files
 twits/
+exports/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

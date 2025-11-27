@@ -1,0 +1,7 @@
+plotly
+pandas
+numpy
+ipywidgets
+chardet
+python-dateutil
+nbformat
