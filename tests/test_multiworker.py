@@ -37,8 +37,8 @@ def test_session_storage():
         "timestamp": "2025-12-03T12:00:00",
     }
     
-    # Save data
-    session_id = "test_session_123"
+    # Save data (use valid hex session ID format)
+    session_id = "0123456789abcdef0123456789abcdef"
     save_session_data(session_id, test_data)
     print(f"✓ Saved session data for {session_id}")
     

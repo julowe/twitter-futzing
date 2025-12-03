@@ -58,11 +58,21 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 # Session data storage directory
 # Uses a shared temporary directory that works across gunicorn workers
 SESSION_DATA_DIR = Path(tempfile.gettempdir()) / "twitter_analyzer_sessions"
-SESSION_DATA_DIR.mkdir(exist_ok=True)
+SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
+
+
+def is_valid_session_id(session_id: str) -> bool:
+    """Validate session ID to prevent directory traversal attacks."""
+    import re
+    # Only allow hexadecimal characters (from secrets.token_hex), 32 chars length
+    return bool(re.match(r'^[a-f0-9]{32}$', session_id))
 
 
 def save_session_data(session_id: str, data: Dict) -> None:
     """Save session data to disk for multi-worker compatibility."""
+    if not is_valid_session_id(session_id):
+        raise ValueError("Invalid session ID")
+    
     file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
     with open(file_path, 'wb') as f:
         pickle.dump(data, f)
@@ -70,9 +80,20 @@ def save_session_data(session_id: str, data: Dict) -> None:
 
 def load_session_data(session_id: str) -> Optional[Dict]:
     """Load session data from disk."""
+    if not is_valid_session_id(session_id):
+        return None
+    
     file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
     if not file_path.exists():
         return None
+    
+    # Verify the file is within our session directory to prevent traversal
+    try:
+        if not file_path.resolve().parent.samefile(SESSION_DATA_DIR):
+            return None
+    except (OSError, ValueError):
+        return None
+    
     try:
         with open(file_path, 'rb') as f:
             return pickle.load(f)
@@ -82,9 +103,15 @@ def load_session_data(session_id: str) -> Optional[Dict]:
 
 def delete_session_data(session_id: str) -> None:
     """Delete session data file."""
+    if not is_valid_session_id(session_id):
+        return
+    
     file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
     if file_path.exists():
-        file_path.unlink()
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
 
 
 ALLOWED_EXTENSIONS = {".js", ".json"}
@@ -978,9 +1005,9 @@ def api_top_tweets():
     
     df = data["df"]
     
-    # Get pagination parameters
-    offset = request.args.get("offset", 0, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    # Get pagination parameters with validation
+    offset = max(0, request.args.get("offset", 0, type=int))
+    limit = max(1, min(1000, request.args.get("limit", 20, type=int)))  # Cap at 1000
     
     # Get top tweets
     top_tweets = []
@@ -1029,9 +1056,9 @@ def api_data_preview():
     
     df = data["df"]
     
-    # Get pagination parameters
-    offset = request.args.get("offset", 0, type=int)
-    limit = request.args.get("limit", 100, type=int)
+    # Get pagination parameters with validation
+    offset = max(0, request.args.get("offset", 0, type=int))
+    limit = max(1, min(1000, request.args.get("limit", 100, type=int)))  # Cap at 1000
     
     # Get preview data
     preview_data = []
