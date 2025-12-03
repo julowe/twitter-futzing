@@ -267,6 +267,18 @@ BASE_TEMPLATE = """
         .data-table tr:hover {
             background: #f0f8ff;
         }
+        .data-table tr.expandable-row {
+            cursor: pointer;
+        }
+        .data-table tr.expanded .text-cell {
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        .count-badge {
+            font-size: 0.7em;
+            font-weight: normal;
+            color: #666;
+        }
         .table-container {
             max-height: calc(100vh - 500px);
             min-height: 300px;
@@ -558,7 +570,7 @@ RESULTS_CONTENT = """
     </div>
     
     <div id="top-tweets" class="tab-content">
-        <h3>Top Tweets by Favorites</h3>
+        <h3>Top Tweets by Favorites <span id="top-tweets-count" class="count-badge">(Showing {{ top_tweets|length }})</span></h3>
         {% if top_tweets %}
         <div class="table-container">
             <table class="data-table" id="top-tweets-table">
@@ -573,9 +585,9 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
-                    <tr>
+                    <tr class="expandable-row" data-full-text="{{ tweet.text }}">
                         <td>{{ tweet.id_str }}</td>
-                        <td>{{ tweet.text[:100] }}{% if tweet.text|length > 100 %}...{% endif %}</td>
+                        <td class="text-cell">{{ tweet.text[:100] }}{% if tweet.text|length > 100 %}...{% endif %}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
                         <td>{{ tweet.date }}</td>
@@ -593,7 +605,7 @@ RESULTS_CONTENT = """
     </div>
     
     <div id="data" class="tab-content">
-        <h3>Data Preview (First 100 records)</h3>
+        <h3>Data Preview <span id="data-preview-count" class="count-badge">(Showing {{ preview_data|length }})</span></h3>
         <div class="table-container">
             <table class="data-table" id="data-preview-table">
                 <thead>
@@ -607,11 +619,11 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="data-preview-body">
                     {% for row in preview_data %}
-                    <tr>
+                    <tr class="expandable-row" data-full-text="{{ row.text }}">
                         <td>{{ row.record_type }}</td>
                         <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
-                        <td>{{ row.text[:80] }}{% if row.text|length > 80 %}...{% endif %}</td>
+                        <td class="text-cell">{{ row.text[:80] }}{% if row.text|length > 80 %}...{% endif %}</td>
                         <td>{{ row.source }}</td>
                     </tr>
                     {% endfor %}
@@ -643,6 +655,49 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // Function to update count badges
+    function updateCount(elementId, count) {
+        const countElement = document.getElementById(elementId);
+        if (countElement) {
+            countElement.textContent = `(Showing ${count})`;
+        }
+    }
+    
+    // Function to make rows expandable
+    function makeRowsExpandable(tableId) {
+        const tbody = document.getElementById(tableId);
+        if (!tbody) return;
+        
+        tbody.addEventListener('click', function(e) {
+            const row = e.target.closest('tr.expandable-row');
+            if (!row) return;
+            
+            const textCell = row.querySelector('.text-cell');
+            if (!textCell) return;
+            
+            const fullText = row.dataset.fullText;
+            if (!fullText) return;
+            
+            // Toggle expanded state
+            if (row.classList.contains('expanded')) {
+                // Collapse - show truncated text
+                const isTweets = tableId === 'top-tweets-body';
+                const maxLen = isTweets ? 100 : 80;
+                const truncated = fullText.length > maxLen ? fullText.substring(0, maxLen) + '...' : fullText;
+                textCell.textContent = truncated;
+                row.classList.remove('expanded');
+            } else {
+                // Expand - show full text
+                textCell.textContent = fullText;
+                row.classList.add('expanded');
+            }
+        });
+    }
+    
+    // Initialize expandable rows
+    makeRowsExpandable('top-tweets-body');
+    makeRowsExpandable('data-preview-body');
+    
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
     if (loadMoreTweets) {
@@ -661,16 +716,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.tweets && data.tweets.length > 0) {
                     data.tweets.forEach(tweet => {
                         const row = document.createElement('tr');
+                        row.className = 'expandable-row';
+                        row.dataset.fullText = tweet.text;
                         const text = tweet.text.length > 100 ? tweet.text.substring(0, 100) + '...' : tweet.text;
                         row.innerHTML = `
                             <td>${tweet.id_str}</td>
-                            <td>${text}</td>
+                            <td class="text-cell">${text}</td>
                             <td>${tweet.favorite_count.toLocaleString()}</td>
                             <td>${tweet.retweet_count.toLocaleString()}</td>
                             <td>${tweet.date}</td>
                         `;
                         tbody.appendChild(row);
                     });
+                    
+                    // Update count
+                    const currentCount = tbody.querySelectorAll('tr').length;
+                    updateCount('top-tweets-count', currentCount);
                     
                     this.dataset.offset = offset + tweetsPageSize;
                     this.disabled = false;
@@ -710,16 +771,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.records && data.records.length > 0) {
                     data.records.forEach(record => {
                         const row = document.createElement('tr');
+                        row.className = 'expandable-row';
+                        row.dataset.fullText = record.text;
                         const text = record.text.length > 80 ? record.text.substring(0, 80) + '...' : record.text;
                         row.innerHTML = `
                             <td>${record.record_type}</td>
                             <td>${record.id_str}</td>
                             <td>${record.date}</td>
-                            <td>${text}</td>
+                            <td class="text-cell">${text}</td>
                             <td>${record.source}</td>
                         `;
                         tbody.appendChild(row);
                     });
+                    
+                    // Update count
+                    const currentCount = tbody.querySelectorAll('tr').length;
+                    updateCount('data-preview-count', currentCount);
                     
                     this.dataset.offset = offset + dataPageSize;
                     this.disabled = false;
