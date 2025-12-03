@@ -287,6 +287,27 @@ def ensure_large_test_file():
     return large_file_path
 
 
+def ensure_medium_test_files():
+    """Ensure the medium test files exist, generating them if necessary."""
+    test_dir = Path(__file__).parent
+    deleted_file_path = test_dir / "mock_medium_deleted_tweets.js"
+    notes_file_path = test_dir / "mock_medium_note_tweets.js"
+    
+    if not deleted_file_path.exists() or not notes_file_path.exists():
+        print("  Generating medium test files...")
+        # Import and run the generator
+        import sys
+        sys.path.insert(0, str(test_dir))
+        from generate_medium_test_files import generate_medium_deleted_tweets, generate_medium_note_tweets
+        
+        if not deleted_file_path.exists():
+            generate_medium_deleted_tweets(deleted_file_path, num_tweets=250)
+        if not notes_file_path.exists():
+            generate_medium_note_tweets(notes_file_path, num_notes=120)
+    
+    return deleted_file_path, notes_file_path
+
+
 def test_large_file_upload():
     """Test uploading a large file (> 500KB to exceed Flask's default in-memory limit)."""
     print("\n" + "="*70)
@@ -458,6 +479,200 @@ def test_large_file_gunicorn():
         print("✓ Server stopped")
 
 
+def test_medium_deleted_tweets_gunicorn():
+    """Test medium-sized deleted tweets file with gunicorn (2 workers)."""
+    print("\n" + "="*70)
+    print("Testing Medium Deleted Tweets File with Gunicorn (2 workers)")
+    print("="*70)
+    
+    # Ensure medium test files exist
+    deleted_file_path, _ = ensure_medium_test_files()
+    
+    env = os.environ.copy()
+    env["SECRET_KEY"] = "test_secret_key_deleted_gunicorn"
+    
+    # Start gunicorn with 2 workers
+    proc = subprocess.Popen(
+        [
+            "gunicorn",
+            "--bind", "0.0.0.0:5003",
+            "--workers", "2",
+            "--timeout", "60",
+            "webapp:app"
+        ],
+        cwd=Path(__file__).parent.parent,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    
+    # Wait for server to start
+    time.sleep(5)
+    
+    try:
+        # Test health endpoint
+        response = requests.get("http://localhost:5003/health", timeout=5)
+        if response.status_code != 200:
+            print(f"✗ FAILED: Health check returned {response.status_code}")
+            return False
+        print("✓ Health endpoint working")
+        
+        file_size_kb = deleted_file_path.stat().st_size / 1024
+        print(f"  File size: {file_size_kb:.2f} KB")
+        
+        # Test deleted tweets file upload multiple times to hit different workers
+        for attempt in range(2):
+            print(f"\n  Attempt {attempt + 1}/2:")
+            
+            session = requests.Session()
+            
+            # Upload deleted tweets file
+            with open(deleted_file_path, "rb") as f:
+                files = [("files", ("mock_medium_deleted_tweets.js", f, "application/javascript"))]
+                upload_response = session.post("http://localhost:5003/upload", files=files, allow_redirects=False, timeout=30)
+            
+            if upload_response.status_code != 302:
+                print(f"  ✗ Upload attempt {attempt + 1} failed: {upload_response.status_code}")
+                return False
+            print(f"  ✓ Upload successful")
+            
+            # Test data preview (deleted tweets don't show in top tweets)
+            preview_response = session.get("http://localhost:5003/api/data-preview?offset=0&limit=10", timeout=10)
+            if preview_response.status_code != 200:
+                print(f"  ✗ Data preview failed: {preview_response.status_code}")
+                print(f"     Response: {preview_response.text}")
+                return False
+            
+            preview_data = preview_response.json()
+            if "records" not in preview_data:
+                print(f"  ✗ No records in preview")
+                return False
+            
+            total = preview_data.get("total", 0)
+            records = preview_data.get("records", [])
+            print(f"  ✓ Data preview working ({len(records)} records, {total} total)")
+            
+            # Verify we got deleted tweets
+            if records and records[0].get("record_type") != "deleted_tweet":
+                print(f"  ✗ Expected deleted_tweet but got {records[0].get('record_type')}")
+                return False
+            
+            print(f"  ✓ Deleted tweets loaded correctly")
+            
+            # Small delay between attempts
+            time.sleep(0.5)
+        
+        print(f"\n✓ All 2 attempts successful with 2 workers")
+        return True
+        
+    finally:
+        # Stop the server
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        print("✓ Server stopped")
+
+
+def test_medium_note_tweets_gunicorn():
+    """Test medium-sized note tweets file with gunicorn (2 workers)."""
+    print("\n" + "="*70)
+    print("Testing Medium Note Tweets File with Gunicorn (2 workers)")
+    print("="*70)
+    
+    # Ensure medium test files exist
+    _, notes_file_path = ensure_medium_test_files()
+    
+    env = os.environ.copy()
+    env["SECRET_KEY"] = "test_secret_key_notes_gunicorn"
+    
+    # Start gunicorn with 2 workers
+    proc = subprocess.Popen(
+        [
+            "gunicorn",
+            "--bind", "0.0.0.0:5004",
+            "--workers", "2",
+            "--timeout", "60",
+            "webapp:app"
+        ],
+        cwd=Path(__file__).parent.parent,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    
+    # Wait for server to start
+    time.sleep(5)
+    
+    try:
+        # Test health endpoint
+        response = requests.get("http://localhost:5004/health", timeout=5)
+        if response.status_code != 200:
+            print(f"✗ FAILED: Health check returned {response.status_code}")
+            return False
+        print("✓ Health endpoint working")
+        
+        file_size_kb = notes_file_path.stat().st_size / 1024
+        print(f"  File size: {file_size_kb:.2f} KB")
+        
+        # Test note tweets file upload multiple times to hit different workers
+        for attempt in range(2):
+            print(f"\n  Attempt {attempt + 1}/2:")
+            
+            session = requests.Session()
+            
+            # Upload note tweets file
+            with open(notes_file_path, "rb") as f:
+                files = [("files", ("mock_medium_note_tweets.js", f, "application/javascript"))]
+                upload_response = session.post("http://localhost:5004/upload", files=files, allow_redirects=False, timeout=30)
+            
+            if upload_response.status_code != 302:
+                print(f"  ✗ Upload attempt {attempt + 1} failed: {upload_response.status_code}")
+                return False
+            print(f"  ✓ Upload successful")
+            
+            # Test data preview (note tweets show in data preview)
+            preview_response = session.get("http://localhost:5004/api/data-preview?offset=0&limit=10", timeout=10)
+            if preview_response.status_code != 200:
+                print(f"  ✗ Data preview failed: {preview_response.status_code}")
+                print(f"     Response: {preview_response.text}")
+                return False
+            
+            preview_data = preview_response.json()
+            if "records" not in preview_data:
+                print(f"  ✗ No records in preview")
+                return False
+            
+            total = preview_data.get("total", 0)
+            records = preview_data.get("records", [])
+            print(f"  ✓ Data preview working ({len(records)} records, {total} total)")
+            
+            # Verify we got note tweets
+            if records and records[0].get("record_type") != "note":
+                print(f"  ✗ Expected note but got {records[0].get('record_type')}")
+                return False
+            
+            print(f"  ✓ Note tweets loaded correctly")
+            
+            # Small delay between attempts
+            time.sleep(0.5)
+        
+        print(f"\n✓ All 2 attempts successful with 2 workers")
+        return True
+        
+    finally:
+        # Stop the server
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        print("✓ Server stopped")
+
+
 def main():
     """Run all tests."""
     print("\n" + "="*70)
@@ -471,6 +686,8 @@ def main():
         ("Gunicorn (1 worker)", test_webapp_gunicorn_single),
         ("Gunicorn (2 workers)", test_webapp_gunicorn_multi),
         ("Large File Upload (gunicorn 2 workers)", test_large_file_gunicorn),
+        ("Medium Deleted Tweets (gunicorn 2 workers)", test_medium_deleted_tweets_gunicorn),
+        ("Medium Note Tweets (gunicorn 2 workers)", test_medium_note_tweets_gunicorn),
     ]
     
     results = []
