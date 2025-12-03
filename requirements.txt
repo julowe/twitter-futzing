@@ -1,7 +1,18 @@
-plotly
-pandas
-numpy
-ipywidgets
-chardet
-python-dateutil
-nbformat
+# Core analysis
+plotly>=5.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+chardet>=5.0.0
+python-dateutil>=2.8.0
+
+# Web application
+flask>=3.0.0
+gunicorn>=21.0.0
+werkzeug>=3.0.0
+
+# Image export for CLI (optional but recommended)
+kaleido>=0.2.1
+
+# Jupyter notebook support (optional, for notebook compatibility)
+ipywidgets>=8.0.0
+nbformat>=5.0.0
