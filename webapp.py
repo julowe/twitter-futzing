@@ -585,7 +585,7 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
-                    <tr class="expandable-row" data-full-text="{{ tweet.text }}">
+                    <tr class="expandable-row" data-full-text="{{ tweet.text | e }}">
                         <td>{{ tweet.id_str }}</td>
                         <td class="text-cell">{{ tweet.text[:100] }}{% if tweet.text|length > 100 %}...{% endif %}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
@@ -619,7 +619,7 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="data-preview-body">
                     {% for row in preview_data %}
-                    <tr class="expandable-row" data-full-text="{{ row.text }}">
+                    <tr class="expandable-row" data-full-text="{{ row.text | e }}">
                         <td>{{ row.record_type }}</td>
                         <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
@@ -654,6 +654,13 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(targetId).classList.add('active');
         });
     });
+    
+    // Function to escape HTML to prevent XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
     
     // Function to update count badges
     function updateCount(elementId, count) {
@@ -720,11 +727,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         row.dataset.fullText = tweet.text;
                         const text = tweet.text.length > 100 ? tweet.text.substring(0, 100) + '...' : tweet.text;
                         row.innerHTML = `
-                            <td>${tweet.id_str}</td>
-                            <td class="text-cell">${text}</td>
-                            <td>${tweet.favorite_count.toLocaleString()}</td>
-                            <td>${tweet.retweet_count.toLocaleString()}</td>
-                            <td>${tweet.date}</td>
+                            <td>${escapeHtml(tweet.id_str)}</td>
+                            <td class="text-cell">${escapeHtml(text)}</td>
+                            <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
+                            <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
+                            <td>${escapeHtml(tweet.date)}</td>
                         `;
                         tbody.appendChild(row);
                     });
@@ -775,11 +782,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         row.dataset.fullText = record.text;
                         const text = record.text.length > 80 ? record.text.substring(0, 80) + '...' : record.text;
                         row.innerHTML = `
-                            <td>${record.record_type}</td>
-                            <td>${record.id_str}</td>
-                            <td>${record.date}</td>
-                            <td class="text-cell">${text}</td>
-                            <td>${record.source}</td>
+                            <td>${escapeHtml(record.record_type)}</td>
+                            <td>${escapeHtml(record.id_str)}</td>
+                            <td>${escapeHtml(record.date)}</td>
+                            <td class="text-cell">${escapeHtml(text)}</td>
+                            <td>${escapeHtml(record.source)}</td>
                         `;
                         tbody.appendChild(row);
                     });
