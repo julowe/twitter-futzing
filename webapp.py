@@ -10,6 +10,7 @@ import pickle
 import re
 import secrets
 import tempfile
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -43,6 +44,29 @@ app = Flask(__name__)
 # Secret key validation pattern - 64 hex chars from secrets.token_hex(32)
 SECRET_KEY_PATTERN = r'[a-f0-9]{64}'
 
+
+def read_and_validate_secret_key(file_path: Path) -> Optional[str]:
+    """Read and validate secret key from file.
+    
+    Args:
+        file_path: Path to the secret key file
+        
+    Returns:
+        Valid secret key string or None if invalid/not found
+    """
+    try:
+        with open(file_path, 'r') as f:
+            key = f.read().strip()
+        
+        # Validate the key format
+        if re.fullmatch(SECRET_KEY_PATTERN, key):
+            return key
+    except (OSError, IOError):
+        pass
+    
+    return None
+
+
 # Secret key configuration - in production, always set SECRET_KEY environment variable
 # to a consistent value to preserve sessions across restarts and workers
 _secret_key = os.environ.get("SECRET_KEY")
@@ -53,19 +77,11 @@ if not _secret_key:
     secret_key_file = Path(tempfile.gettempdir()) / "twitter_analyzer_secret.key"
     
     try:
-        if secret_key_file.exists():
-            # Read existing secret key
-            with open(secret_key_file, 'r') as f:
-                _secret_key = f.read().strip()
-            
-            # Validate the key format
-            if not re.fullmatch(SECRET_KEY_PATTERN, _secret_key):
-                # Invalid key, regenerate
-                _secret_key = None
+        # Try to read existing key
+        _secret_key = read_and_validate_secret_key(secret_key_file)
         
         if not _secret_key:
             # Generate and save new secret key atomically
-            import warnings
             warnings.warn(
                 "SECRET_KEY not set. Generating persistent key for multi-worker support. "
                 "For production, set SECRET_KEY environment variable for better security.",
@@ -92,17 +108,13 @@ if not _secret_key:
     
     except FileExistsError:
         # File was created between check and creation (race condition)
-        # Read the existing file
-        with open(secret_key_file, 'r') as f:
-            _secret_key = f.read().strip()
-        
-        # Validate format
-        if not re.fullmatch(SECRET_KEY_PATTERN, _secret_key):
+        # Read and validate the existing file
+        _secret_key = read_and_validate_secret_key(secret_key_file)
+        if not _secret_key:
             raise ValueError(f"Invalid secret key format in {secret_key_file}")
     
     except (OSError, IOError) as e:
         # Fall back to runtime-only key if file operations fail
-        import warnings
         warnings.warn(
             f"Failed to read/write secret key file: {e}. Using runtime-only key. "
             "Sessions will not persist across worker restarts.",

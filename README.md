@@ -65,9 +65,9 @@ Then open http://localhost:5000 in your browser to upload files and view interac
 
 **Production Notes:**
 - Always set the `SECRET_KEY` environment variable when running with multiple workers
-- Without SECRET_KEY, a persistent key file is created automatically, but it's better to set it explicitly
+- Without SECRET_KEY, a persistent key file is created automatically in the system temp directory
 - Use `--workers` appropriate for your server (typically 2-4 workers)
-- Session data is stored in `/tmp/twitter_analyzer_sessions/` and shared across workers
+- Session data is stored in the system temp directory (`/tmp/` on Linux) under `twitter_analyzer_sessions/` and shared across workers
 
 ### Docker
 
