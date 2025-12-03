@@ -41,17 +41,31 @@ from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 app = Flask(__name__)
 
 # Secret key configuration - in production, always set SECRET_KEY environment variable
-# to a consistent value to preserve sessions across restarts
+# to a consistent value to preserve sessions across restarts and workers
 _secret_key = os.environ.get("SECRET_KEY")
 if not _secret_key:
-    import warnings
-    warnings.warn(
-        "SECRET_KEY not set. Using randomly generated key. "
-        "Sessions will be invalidated on restart. "
-        "Set SECRET_KEY environment variable for production.",
-        RuntimeWarning
-    )
-    _secret_key = secrets.token_hex(32)
+    # Use a persistent secret key file for multi-worker consistency
+    # This ensures all gunicorn workers use the same secret key
+    secret_key_file = Path(tempfile.gettempdir()) / "twitter_analyzer_secret.key"
+    
+    if secret_key_file.exists():
+        # Read existing secret key
+        with open(secret_key_file, 'r') as f:
+            _secret_key = f.read().strip()
+    else:
+        # Generate and save new secret key
+        import warnings
+        warnings.warn(
+            "SECRET_KEY not set. Generating persistent key for multi-worker support. "
+            "Set SECRET_KEY environment variable for production.",
+            RuntimeWarning
+        )
+        _secret_key = secrets.token_hex(32)
+        # Save with restrictive permissions
+        secret_key_file.touch(mode=0o600)
+        with open(secret_key_file, 'w') as f:
+            f.write(_secret_key)
+
 app.secret_key = _secret_key
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload

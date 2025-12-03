@@ -46,6 +46,9 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8080
+# SECRET_KEY: Not set by default. The app will create a persistent key file.
+# For production deployments, set SECRET_KEY environment variable for better security:
+# docker run -e SECRET_KEY="your-secret-key" -p 8080:8080 twitter-analyzer
 
 # Expose port
 EXPOSE 8080
