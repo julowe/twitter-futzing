@@ -56,7 +56,7 @@ if not _secret_key:
                 _secret_key = f.read().strip()
             
             # Validate the key format (should be 64-char hex from secrets.token_hex(32))
-            if not re.match(r'^[a-f0-9]{64}$', _secret_key):
+            if not re.fullmatch(r'[a-f0-9]{64}', _secret_key):
                 # Invalid key, regenerate
                 _secret_key = None
         
@@ -73,12 +73,14 @@ if not _secret_key:
             # Atomic write: open with exclusive creation and restrictive permissions
             fd = os.open(str(secret_key_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             try:
-                with os.fdopen(fd, 'w') as f:
-                    f.write(_secret_key)
-                # fd is now owned by fdopen and will be closed when the context exits
+                # Note: fd ownership is transferred to fdopen immediately
+                # Set fd = None right after to prevent double-close attempts
+                f = os.fdopen(fd, 'w')
                 fd = None
+                with f:
+                    f.write(_secret_key)
             except (OSError, IOError) as e:
-                # If write fails, ensure fd is closed if it wasn't taken by fdopen
+                # If fdopen or write fails, ensure fd is closed if it wasn't transferred
                 if fd is not None:
                     try:
                         os.close(fd)
@@ -93,7 +95,7 @@ if not _secret_key:
             _secret_key = f.read().strip()
         
         # Validate format
-        if not re.match(r'^[a-f0-9]{64}$', _secret_key):
+        if not re.fullmatch(r'[a-f0-9]{64}', _secret_key):
             raise ValueError(f"Invalid secret key format in {secret_key_file}")
     
     except (OSError, IOError) as e:
