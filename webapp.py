@@ -7,6 +7,7 @@ Provides interactive visualizations and data tables.
 import io
 import os
 import pickle
+import re
 import secrets
 import tempfile
 from datetime import datetime
@@ -63,7 +64,6 @@ SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
 
 def is_valid_session_id(session_id: str) -> bool:
     """Validate session ID to prevent directory traversal attacks."""
-    import re
     # Only allow hexadecimal characters (from secrets.token_hex), 32 chars length
     return bool(re.match(r'^[a-f0-9]{32}$', session_id))
 
@@ -97,7 +97,8 @@ def load_session_data(session_id: str) -> Optional[Dict]:
     try:
         with open(file_path, 'rb') as f:
             return pickle.load(f)
-    except Exception:
+    except (pickle.PickleError, EOFError, OSError):
+        # Handle expected errors: corrupted pickle, truncated file, I/O errors
         return None
 
 

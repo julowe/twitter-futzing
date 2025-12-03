@@ -26,6 +26,7 @@ def test_session_storage():
     print("="*70)
     
     import pandas as pd
+    import secrets
     
     # Create test data
     test_data = {
@@ -37,8 +38,8 @@ def test_session_storage():
         "timestamp": "2025-12-03T12:00:00",
     }
     
-    # Save data (use valid hex session ID format)
-    session_id = "0123456789abcdef0123456789abcdef"
+    # Save data (generate unique session ID for test isolation)
+    session_id = secrets.token_hex(16)
     save_session_data(session_id, test_data)
     print(f"✓ Saved session data for {session_id}")
     
