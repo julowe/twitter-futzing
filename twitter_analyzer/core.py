@@ -300,9 +300,15 @@ def coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with properly typed columns.
     """
-    # created_at to datetime
+    # created_at and deleted_at to datetime
+    # Twitter exports use two main formats:
+    # 1. RFC 2822: "Wed Nov 15 12:00:45 +0000 2023" (tweet.created_at)
+    # 2. ISO 8601: "2023-11-15T12:30:45.000Z" (noteTweet.createdAt, deleted_at)
+    # We specify format='mixed' to handle both and use UTC for consistent timezone handling
     if "created_at" in df.columns:
-        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+        df["created_at"] = pd.to_datetime(df["created_at"], format="mixed", errors="coerce", utc=True)
+    if "deleted_at" in df.columns:
+        df["deleted_at"] = pd.to_datetime(df["deleted_at"], format="mixed", errors="coerce", utc=True)
     # counts to numeric
     for col in [
         "favorite_count",

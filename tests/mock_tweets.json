@@ -1,0 +1,69 @@
+[
+  {
+    "tweet": {
+      "edit_info": {
+        "initial": {
+          "editTweetIds": ["1234567890123456880"],
+          "editableUntil": "2023-04-15T18:00:00.000Z",
+          "editsRemaining": "5",
+          "isEditEligible": false
+        }
+      },
+      "retweeted": false,
+      "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+      "entities": {
+        "hashtags": [
+          {
+            "text": "JSON",
+            "indices": ["0", "5"]
+          }
+        ],
+        "symbols": [],
+        "user_mentions": [],
+        "urls": []
+      },
+      "display_text_range": ["0", "80"],
+      "favorite_count": "15",
+      "id_str": "1234567890123456880",
+      "truncated": false,
+      "retweet_count": "3",
+      "id": "1234567890123456880",
+      "possibly_sensitive": false,
+      "created_at": "Sat Apr 15 18:00:00 +0000 2023",
+      "favorited": false,
+      "full_text": "#JSON format is also supported! This tweet is from a .json file instead of .js",
+      "lang": "en"
+    }
+  },
+  {
+    "tweet": {
+      "edit_info": {
+        "initial": {
+          "editTweetIds": ["1234567890123456881"],
+          "editableUntil": "2023-03-20T12:30:45.000Z",
+          "editsRemaining": "5",
+          "isEditEligible": false
+        }
+      },
+      "retweeted": false,
+      "source": "<a href=\"http://twitter.com/download/iphone\" rel=\"nofollow\">Twitter for iPhone</a>",
+      "entities": {
+        "hashtags": [],
+        "symbols": [],
+        "user_mentions": [],
+        "urls": []
+      },
+      "display_text_range": ["0", "100"],
+      "favorite_count": "8",
+      "id_str": "1234567890123456881",
+      "truncated": false,
+      "retweet_count": "1",
+      "id": "1234567890123456881",
+      "possibly_sensitive": false,
+      "created_at": "Mon Mar 20 12:30:45 +0000 2023",
+      "favorited": false,
+      "full_text": "Testing JSON format parsing. Both .js and .json files should work seamlessly with the Twitter analyzer.",
+      "lang": "en"
+    }
+  }
+]
