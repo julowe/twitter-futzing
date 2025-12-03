@@ -6,8 +6,11 @@ Provides interactive visualizations and data tables.
 
 import io
 import os
+import pickle
 import secrets
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from flask import (
@@ -52,12 +55,37 @@ app.secret_key = _secret_key
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
-# Session data storage
-# NOTE: This in-memory storage is suitable for single-instance demo deployments.
-# For production with multiple workers/instances, use Redis, database, or
-# client-side session storage (e.g., Flask-Session with Redis backend).
-# Data is isolated per session ID and automatically cleaned on browser close.
-session_data: Dict[str, Dict] = {}
+# Session data storage directory
+# Uses a shared temporary directory that works across gunicorn workers
+SESSION_DATA_DIR = Path(tempfile.gettempdir()) / "twitter_analyzer_sessions"
+SESSION_DATA_DIR.mkdir(exist_ok=True)
+
+
+def save_session_data(session_id: str, data: Dict) -> None:
+    """Save session data to disk for multi-worker compatibility."""
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    with open(file_path, 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_session_data(session_id: str) -> Optional[Dict]:
+    """Load session data from disk."""
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    if not file_path.exists():
+        return None
+    try:
+        with open(file_path, 'rb') as f:
+            return pickle.load(f)
+    except Exception:
+        return None
+
+
+def delete_session_data(session_id: str) -> None:
+    """Delete session data file."""
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    if file_path.exists():
+        file_path.unlink()
+
 
 ALLOWED_EXTENSIONS = {".js", ".json"}
 
@@ -838,10 +866,10 @@ def upload():
         # Store in session
         session_id = secrets.token_hex(16)
         session["data_id"] = session_id
-        session_data[session_id] = {
+        save_session_data(session_id, {
             "df": df,
             "timestamp": datetime.now().isoformat(),
-        }
+        })
 
         flash(f"Successfully processed {len(df):,} records from {len(file_data)} file(s)", "success")
         return redirect(url_for("results"))
@@ -855,11 +883,15 @@ def upload():
 def results():
     """Render analysis results."""
     data_id = session.get("data_id")
-    if not data_id or data_id not in session_data:
+    if not data_id:
         flash("No data available. Please upload files first.", "info")
         return redirect(url_for("index"))
+    
+    data = load_session_data(data_id)
+    if not data:
+        flash("Session expired. Please upload files again.", "info")
+        return redirect(url_for("index"))
 
-    data = session_data[data_id]
     df = data["df"]
 
     # Generate summary
@@ -937,10 +969,13 @@ def results():
 def api_top_tweets():
     """API endpoint for paginated top tweets."""
     data_id = session.get("data_id")
-    if not data_id or data_id not in session_data:
+    if not data_id:
         return jsonify({"error": "No data available"}), 404
     
-    data = session_data[data_id]
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
     df = data["df"]
     
     # Get pagination parameters
@@ -985,10 +1020,13 @@ def api_top_tweets():
 def api_data_preview():
     """API endpoint for paginated data preview."""
     data_id = session.get("data_id")
-    if not data_id or data_id not in session_data:
+    if not data_id:
         return jsonify({"error": "No data available"}), 404
     
-    data = session_data[data_id]
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
     df = data["df"]
     
     # Get pagination parameters

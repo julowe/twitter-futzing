@@ -22,7 +22,7 @@ from werkzeug.datastructures import FileStorage
 # Capture warnings
 warnings.simplefilter("always")
 
-from webapp import app, session_data
+from webapp import app
 from twitter_analyzer.core import process_files
 
 
@@ -165,9 +165,6 @@ def test_webapp_endpoint_simulation():
         # Should redirect to results
         assert response.status_code == 302, "Upload should redirect"
         print("✓ File upload successful (redirect to results)")
-        
-        # Clear session data
-        session_data.clear()
     
     print("-" * 70)
     print("✓ Webapp endpoint simulation passed!")
