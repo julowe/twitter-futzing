@@ -17,6 +17,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import chardet
 import pandas as pd
 
+# Minimum confidence threshold for chardet encoding detection
+# Below this threshold, we prefer UTF-8 with error handling
+MIN_CHARDET_CONFIDENCE = 0.7
+
 
 def detect_and_decode(data: bytes) -> str:
     """Detect encoding and decode bytes to text.
@@ -47,19 +51,24 @@ def detect_and_decode(data: bytes) -> str:
         confidence = detection.get("confidence", 0)
 
         # If chardet has low confidence and suggests non-UTF-8, be cautious
-        if confidence < 0.7 and encoding.lower() not in ("utf-8", "ascii", "utf-8-sig"):
+        if confidence < MIN_CHARDET_CONFIDENCE and encoding.lower() not in (
+            "utf-8",
+            "ascii",
+            "utf-8-sig",
+        ):
             # Try UTF-8 with error replacement first
             try:
                 decoded = data.decode("utf-8", errors="replace")
                 return unicodedata.normalize("NFC", decoded)
-            except Exception:
+            except (UnicodeDecodeError, LookupError):
                 pass
 
         # Use chardet's suggestion
         decoded = data.decode(encoding, errors="replace")
         return unicodedata.normalize("NFC", decoded)
-    except Exception:
+    except (UnicodeDecodeError, LookupError, AttributeError):
         # Last resort: UTF-8 with replacement
+        # AttributeError can occur if encoding is None or invalid
         decoded = data.decode("utf-8", errors="replace")
         return unicodedata.normalize("NFC", decoded)
 
