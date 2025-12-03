@@ -10,6 +10,7 @@ import json
 import os
 import re
 import textwrap
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,20 +21,47 @@ import pandas as pd
 def detect_and_decode(data: bytes) -> str:
     """Detect encoding and decode bytes to text.
 
-    Falls back to UTF-8 with errors replaced if detection fails.
+    Twitter exports are UTF-8 encoded. We try UTF-8 first, then fall back
+    to chardet detection if needed. This prevents mojibake from smart quotes
+    and other Unicode characters being misinterpreted.
 
     Args:
         data: Raw bytes to decode.
 
     Returns:
-        Decoded string.
+        Decoded and normalized Unicode string.
     """
+    # Twitter exports are UTF-8. Try UTF-8 first.
+    try:
+        decoded = data.decode("utf-8")
+        # Normalize to NFC form (canonical composition) to handle any
+        # combining characters consistently
+        return unicodedata.normalize("NFC", decoded)
+    except UnicodeDecodeError:
+        pass
+
+    # If UTF-8 fails, fall back to chardet detection
     try:
         detection = chardet.detect(data) or {}
         encoding = detection.get("encoding") or "utf-8"
-        return data.decode(encoding, errors="replace")
+        confidence = detection.get("confidence", 0)
+
+        # If chardet has low confidence and suggests non-UTF-8, be cautious
+        if confidence < 0.7 and encoding.lower() not in ("utf-8", "ascii", "utf-8-sig"):
+            # Try UTF-8 with error replacement first
+            try:
+                decoded = data.decode("utf-8", errors="replace")
+                return unicodedata.normalize("NFC", decoded)
+            except Exception:
+                pass
+
+        # Use chardet's suggestion
+        decoded = data.decode(encoding, errors="replace")
+        return unicodedata.normalize("NFC", decoded)
     except Exception:
-        return data.decode("utf-8", errors="replace")
+        # Last resort: UTF-8 with replacement
+        decoded = data.decode("utf-8", errors="replace")
+        return unicodedata.normalize("NFC", decoded)
 
 
 def strip_js_wrapper(text: str) -> str:
