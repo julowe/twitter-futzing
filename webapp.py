@@ -6,7 +6,6 @@ Provides interactive visualizations and data tables.
 
 import io
 import os
-import re
 import secrets
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -585,7 +584,7 @@ RESULTS_CONTENT = """
                     {% for tweet in top_tweets %}
                     <tr>
                         <td>{{ tweet.id_str }}</td>
-                        <td class="text-cell">{{ tweet.text | convert_twitter_links | safe }}</td>
+                        <td class="text-cell">{{ tweet.text }}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
                         <td>{{ tweet.date }}</td>
@@ -621,7 +620,7 @@ RESULTS_CONTENT = """
                         <td>{{ row.record_type }}</td>
                         <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
-                        <td class="text-cell">{{ row.text | convert_twitter_links | safe }}</td>
+                        <td class="text-cell">{{ row.text }}</td>
                         <td>{{ row.source }}</td>
                     </tr>
                     {% endfor %}
@@ -660,15 +659,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return div.innerHTML;
     }
     
-    // Function to convert Twitter t.co links to hyperlinks
-    function convertTwitterLinks(text) {
-        if (!text) return text;
-        // Pattern to match http:// or https:// followed by t.co/ and any characters
-        const pattern = /https?:\/\/t\.co\/\S+/g;
-        // Replace with HTML link that opens in new window
-        return text.replace(pattern, '<a href="$&" target="_blank" rel="noopener noreferrer">Link</a>');
-    }
-    
     // Function to update count badges
     function updateCount(elementId, count) {
         const countElement = document.getElementById(elementId);
@@ -695,10 +685,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.tweets && data.tweets.length > 0) {
                     data.tweets.forEach(tweet => {
                         const row = document.createElement('tr');
-                        const textWithLinks = convertTwitterLinks(escapeHtml(tweet.text));
                         row.innerHTML = `
                             <td>${escapeHtml(tweet.id_str)}</td>
-                            <td class="text-cell">${textWithLinks}</td>
+                            <td class="text-cell">${escapeHtml(tweet.text)}</td>
                             <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.date)}</td>
@@ -748,12 +737,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.records && data.records.length > 0) {
                     data.records.forEach(record => {
                         const row = document.createElement('tr');
-                        const textWithLinks = convertTwitterLinks(escapeHtml(record.text));
                         row.innerHTML = `
                             <td>${escapeHtml(record.record_type)}</td>
                             <td>${escapeHtml(record.id_str)}</td>
                             <td>${escapeHtml(record.date)}</td>
-                            <td class="text-cell">${textWithLinks}</td>
+                            <td class="text-cell">${escapeHtml(record.text)}</td>
                             <td>${escapeHtml(record.source)}</td>
                         `;
                         tbody.appendChild(row);
@@ -797,19 +785,7 @@ def format_number(value):
         return str(value)
 
 
-def convert_twitter_links(text):
-    """Convert Twitter t.co links to HTML hyperlinks labeled 'Link'."""
-    if not text:
-        return text
-    # Pattern to match http:// or https:// followed by t.co/ and any characters
-    pattern = r'https?://t\.co/\S+'
-    # Replace with HTML link that opens in new window
-    replaced = re.sub(pattern, r'<a href="\g<0>" target="_blank" rel="noopener noreferrer">Link</a>', text)
-    return replaced
-
-
 app.jinja_env.filters["format_number"] = format_number
-app.jinja_env.filters["convert_twitter_links"] = convert_twitter_links
 
 
 @app.route("/")
