@@ -75,9 +75,15 @@ if not _secret_key:
             try:
                 with os.fdopen(fd, 'w') as f:
                     f.write(_secret_key)
-            except:
-                # If write fails, close fd and re-raise
-                os.close(fd)
+                # fd is now owned by fdopen and will be closed when the context exits
+                fd = None
+            except (OSError, IOError) as e:
+                # If write fails, ensure fd is closed if it wasn't taken by fdopen
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
                 raise
     
     except FileExistsError:
