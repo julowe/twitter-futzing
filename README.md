@@ -63,6 +63,18 @@ Then open http://localhost:5000 in your browser to upload files and view interac
 
 ### Docker
 
+#### Using Pre-built Image from GitHub Container Registry
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/julowe/twitter-futzing:latest
+
+# Run the container
+docker run -p 8080:8080 ghcr.io/julowe/twitter-futzing:latest
+```
+
+#### Building Locally
+
 ```bash
 # Build the image
 docker build -t twitter-analyzer .
@@ -113,6 +125,23 @@ python -m pytest
 # Run the web app in debug mode
 DEBUG=true python webapp.py
 ```
+
+## CI/CD
+
+This project uses GitHub Actions to automatically build and publish Docker images to the GitHub Container Registry (ghcr.io).
+
+### Automated Docker Builds
+
+- **Trigger**: Automatic builds occur on every push to the `main` branch
+- **Registry**: Images are published to `ghcr.io/julowe/twitter-futzing`
+- **Tags**: 
+  - `latest` - Most recent build from main branch
+  - `main-<sha>` - Specific commit SHA from main branch
+  - `<branch>` - Branch name for non-main branches
+
+### Manual Workflow Trigger
+
+You can also manually trigger the Docker build workflow from the Actions tab in GitHub.
 
 ## License
 
