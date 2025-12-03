@@ -646,6 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
     if (loadMoreTweets) {
+        const tweetsPageSize = 20;
         loadMoreTweets.addEventListener('click', async function() {
             const offset = parseInt(this.dataset.offset);
             const tbody = document.getElementById('top-tweets-body');
@@ -654,7 +655,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=20`);
+                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}`);
                 const data = await response.json();
                 
                 if (data.tweets && data.tweets.length > 0) {
@@ -671,7 +672,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         tbody.appendChild(row);
                     });
                     
-                    this.dataset.offset = offset + 20;
+                    this.dataset.offset = offset + tweetsPageSize;
                     this.disabled = false;
                     this.textContent = 'Load More...';
                     
@@ -694,6 +695,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load More Data Preview
     const loadMoreData = document.getElementById('load-more-data');
     if (loadMoreData) {
+        const dataPageSize = 100;
         loadMoreData.addEventListener('click', async function() {
             const offset = parseInt(this.dataset.offset);
             const tbody = document.getElementById('data-preview-body');
@@ -702,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/data-preview?offset=${offset}&limit=100`);
+                const response = await fetch(`/api/data-preview?offset=${offset}&limit=${dataPageSize}`);
                 const data = await response.json();
                 
                 if (data.records && data.records.length > 0) {
@@ -719,7 +721,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         tbody.appendChild(row);
                     });
                     
-                    this.dataset.offset = offset + 100;
+                    this.dataset.offset = offset + dataPageSize;
                     this.disabled = false;
                     this.textContent = 'Load More...';
                     
