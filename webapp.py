@@ -268,10 +268,32 @@ BASE_TEMPLATE = """
             background: #f0f8ff;
         }
         .table-container {
-            max-height: 400px;
+            max-height: calc(100vh - 500px);
+            min-height: 300px;
             overflow-y: auto;
             border-radius: 8px;
             border: 1px solid #ddd;
+        }
+        .load-more-btn {
+            margin-top: 15px;
+            text-align: center;
+        }
+        .load-more-btn button {
+            padding: 10px 20px;
+            background: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+        .load-more-btn button:hover {
+            background: #0d8ecf;
+        }
+        .load-more-btn button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .stats-grid {
             display: grid;
@@ -539,7 +561,7 @@ RESULTS_CONTENT = """
         <h3>Top Tweets by Favorites</h3>
         {% if top_tweets %}
         <div class="table-container">
-            <table class="data-table">
+            <table class="data-table" id="top-tweets-table">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -549,7 +571,7 @@ RESULTS_CONTENT = """
                         <th>Date</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
                     <tr>
                         <td>{{ tweet.id_str }}</td>
@@ -562,6 +584,9 @@ RESULTS_CONTENT = """
                 </tbody>
             </table>
         </div>
+        <div class="load-more-btn">
+            <button id="load-more-tweets" data-offset="20">Load More...</button>
+        </div>
         {% else %}
         <p>No tweets with engagement data available.</p>
         {% endif %}
@@ -570,7 +595,7 @@ RESULTS_CONTENT = """
     <div id="data" class="tab-content">
         <h3>Data Preview (First 100 records)</h3>
         <div class="table-container">
-            <table class="data-table">
+            <table class="data-table" id="data-preview-table">
                 <thead>
                     <tr>
                         <th>Type</th>
@@ -580,7 +605,7 @@ RESULTS_CONTENT = """
                         <th>Source</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="data-preview-body">
                     {% for row in preview_data %}
                     <tr>
                         <td>{{ row.record_type }}</td>
@@ -592,6 +617,9 @@ RESULTS_CONTENT = """
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <div class="load-more-btn">
+            <button id="load-more-data" data-offset="100">Load More...</button>
         </div>
     </div>
 </div>
@@ -614,6 +642,102 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(targetId).classList.add('active');
         });
     });
+    
+    // Load More Top Tweets
+    const loadMoreTweets = document.getElementById('load-more-tweets');
+    if (loadMoreTweets) {
+        loadMoreTweets.addEventListener('click', async function() {
+            const offset = parseInt(this.dataset.offset);
+            const tbody = document.getElementById('top-tweets-body');
+            
+            this.disabled = true;
+            this.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=20`);
+                const data = await response.json();
+                
+                if (data.tweets && data.tweets.length > 0) {
+                    data.tweets.forEach(tweet => {
+                        const row = document.createElement('tr');
+                        const text = tweet.text.length > 100 ? tweet.text.substring(0, 100) + '...' : tweet.text;
+                        row.innerHTML = `
+                            <td>${tweet.id_str}</td>
+                            <td>${text}</td>
+                            <td>${tweet.favorite_count.toLocaleString()}</td>
+                            <td>${tweet.retweet_count.toLocaleString()}</td>
+                            <td>${tweet.date}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    this.dataset.offset = offset + 20;
+                    this.disabled = false;
+                    this.textContent = 'Load More...';
+                    
+                    if (!data.has_more) {
+                        this.disabled = true;
+                        this.textContent = `All ${data.total} tweets loaded`;
+                    }
+                } else {
+                    this.disabled = true;
+                    this.textContent = 'No more tweets';
+                }
+            } catch (err) {
+                console.error('Error loading tweets:', err);
+                this.disabled = false;
+                this.textContent = 'Error loading tweets. Try again?';
+            }
+        });
+    }
+    
+    // Load More Data Preview
+    const loadMoreData = document.getElementById('load-more-data');
+    if (loadMoreData) {
+        loadMoreData.addEventListener('click', async function() {
+            const offset = parseInt(this.dataset.offset);
+            const tbody = document.getElementById('data-preview-body');
+            
+            this.disabled = true;
+            this.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch(`/api/data-preview?offset=${offset}&limit=100`);
+                const data = await response.json();
+                
+                if (data.records && data.records.length > 0) {
+                    data.records.forEach(record => {
+                        const row = document.createElement('tr');
+                        const text = record.text.length > 80 ? record.text.substring(0, 80) + '...' : record.text;
+                        row.innerHTML = `
+                            <td>${record.record_type}</td>
+                            <td>${record.id_str}</td>
+                            <td>${record.date}</td>
+                            <td>${text}</td>
+                            <td>${record.source}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    this.dataset.offset = offset + 100;
+                    this.disabled = false;
+                    this.textContent = 'Load More...';
+                    
+                    if (!data.has_more) {
+                        this.disabled = true;
+                        this.textContent = `All ${data.total} records loaded`;
+                    }
+                } else {
+                    this.disabled = true;
+                    this.textContent = 'No more records';
+                }
+            } catch (err) {
+                console.error('Error loading data:', err);
+                this.disabled = false;
+                this.textContent = 'Error loading data. Try again?';
+            }
+        });
+    }
 });
 </script>
 """
@@ -775,6 +899,95 @@ def results():
         ),
         scripts=RESULTS_SCRIPTS,
     )
+
+
+@app.route("/api/top-tweets")
+def api_top_tweets():
+    """API endpoint for paginated top tweets."""
+    data_id = session.get("data_id")
+    if not data_id or data_id not in session_data:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = session_data[data_id]
+    df = data["df"]
+    
+    # Get pagination parameters
+    offset = request.args.get("offset", 0, type=int)
+    limit = request.args.get("limit", 20, type=int)
+    
+    # Get top tweets
+    top_tweets = []
+    if "favorite_count" in df.columns and df["favorite_count"].notna().any():
+        tweets_only = df[df["record_type"] == "tweet"] if "record_type" in df.columns else df
+        all_top = tweets_only.nlargest(min(len(tweets_only), 1000), "favorite_count")  # Limit to top 1000
+        
+        # Paginate
+        paginated = all_top.iloc[offset:offset + limit]
+        
+        for _, row in paginated.iterrows():
+            date_str = (
+                row["created_at"].strftime("%Y-%m-%d %H:%M")
+                if pd.notna(row.get("created_at"))
+                else "N/A"
+            )
+            top_tweets.append(
+                {
+                    "id_str": row.get("id_str", ""),
+                    "text": row.get("text", ""),
+                    "favorite_count": row.get("favorite_count", 0),
+                    "retweet_count": row.get("retweet_count", 0) or 0,
+                    "date": date_str,
+                }
+            )
+        
+        return jsonify({
+            "tweets": top_tweets,
+            "has_more": offset + limit < len(all_top),
+            "total": len(all_top),
+        })
+    
+    return jsonify({"tweets": [], "has_more": False, "total": 0})
+
+
+@app.route("/api/data-preview")
+def api_data_preview():
+    """API endpoint for paginated data preview."""
+    data_id = session.get("data_id")
+    if not data_id or data_id not in session_data:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = session_data[data_id]
+    df = data["df"]
+    
+    # Get pagination parameters
+    offset = request.args.get("offset", 0, type=int)
+    limit = request.args.get("limit", 100, type=int)
+    
+    # Get preview data
+    preview_data = []
+    paginated = df.iloc[offset:offset + limit]
+    
+    for _, row in paginated.iterrows():
+        date_str = (
+            row["created_at"].strftime("%Y-%m-%d %H:%M")
+            if pd.notna(row.get("created_at"))
+            else "N/A"
+        )
+        preview_data.append(
+            {
+                "record_type": row.get("record_type", ""),
+                "id_str": row.get("id_str", ""),
+                "date": date_str,
+                "text": row.get("text", "") or "",
+                "source": row.get("source", "") or "",
+            }
+        )
+    
+    return jsonify({
+        "records": preview_data,
+        "has_more": offset + limit < len(df),
+        "total": len(df),
+    })
 
 
 @app.route("/health")
