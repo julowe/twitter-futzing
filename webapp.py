@@ -58,6 +58,14 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
 # Session data storage directory
 # Uses a shared temporary directory that works across gunicorn workers
+# Security note: pickle is used for efficient DataFrame serialization.
+# This is safe because:
+# 1. Session IDs are cryptographically random (secrets.token_hex)
+# 2. Session IDs are strictly validated (32-char hex only)
+# 3. Directory has restrictive permissions (0o700, owner-only)
+# 4. Path traversal is prevented via validation
+# 5. Only application-generated data (DataFrames) is pickled, not user input
+# 6. Pickle files are never directly accessible to users
 SESSION_DATA_DIR = Path(tempfile.gettempdir()) / "twitter_analyzer_sessions"
 SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
 
@@ -69,7 +77,11 @@ def is_valid_session_id(session_id: str) -> bool:
 
 
 def save_session_data(session_id: str, data: Dict) -> None:
-    """Save session data to disk for multi-worker compatibility."""
+    """Save session data to disk for multi-worker compatibility.
+    
+    Security: Uses pickle for DataFrame serialization. Session IDs are validated
+    and directory has restrictive permissions to prevent unauthorized access.
+    """
     if not is_valid_session_id(session_id):
         raise ValueError("Invalid session ID")
     
@@ -79,7 +91,11 @@ def save_session_data(session_id: str, data: Dict) -> None:
 
 
 def load_session_data(session_id: str) -> Optional[Dict]:
-    """Load session data from disk."""
+    """Load session data from disk.
+    
+    Security: Session ID is validated before use. Path verification prevents
+    directory traversal. Only loads files from protected session directory.
+    """
     if not is_valid_session_id(session_id):
         return None
     
