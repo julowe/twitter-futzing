@@ -40,6 +40,9 @@ from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 
 app = Flask(__name__)
 
+# Secret key validation pattern - 64 hex chars from secrets.token_hex(32)
+SECRET_KEY_PATTERN = r'[a-f0-9]{64}'
+
 # Secret key configuration - in production, always set SECRET_KEY environment variable
 # to a consistent value to preserve sessions across restarts and workers
 _secret_key = os.environ.get("SECRET_KEY")
@@ -55,8 +58,8 @@ if not _secret_key:
             with open(secret_key_file, 'r') as f:
                 _secret_key = f.read().strip()
             
-            # Validate the key format (should be 64-char hex from secrets.token_hex(32))
-            if not re.fullmatch(r'[a-f0-9]{64}', _secret_key):
+            # Validate the key format
+            if not re.fullmatch(SECRET_KEY_PATTERN, _secret_key):
                 # Invalid key, regenerate
                 _secret_key = None
         
@@ -71,22 +74,21 @@ if not _secret_key:
             _secret_key = secrets.token_hex(32)
             
             # Atomic write: open with exclusive creation and restrictive permissions
-            fd = os.open(str(secret_key_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            # Use try-finally to ensure file descriptor cleanup
+            fd = None
             try:
-                # Note: fd ownership is transferred to fdopen immediately
-                # Set fd = None right after to prevent double-close attempts
-                f = os.fdopen(fd, 'w')
-                fd = None
-                with f:
+                fd = os.open(str(secret_key_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                # Transfer fd ownership to fdopen
+                with os.fdopen(fd, 'w') as f:
+                    fd = None  # fd now owned by file object, will be closed by context manager
                     f.write(_secret_key)
-            except (OSError, IOError) as e:
-                # If fdopen or write fails, ensure fd is closed if it wasn't transferred
+            finally:
+                # Ensure fd is closed if fdopen failed
                 if fd is not None:
                     try:
                         os.close(fd)
                     except OSError:
                         pass
-                raise
     
     except FileExistsError:
         # File was created between check and creation (race condition)
@@ -95,7 +97,7 @@ if not _secret_key:
             _secret_key = f.read().strip()
         
         # Validate format
-        if not re.fullmatch(r'[a-f0-9]{64}', _secret_key):
+        if not re.fullmatch(SECRET_KEY_PATTERN, _secret_key):
             raise ValueError(f"Invalid secret key format in {secret_key_file}")
     
     except (OSError, IOError) as e:
