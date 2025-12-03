@@ -271,11 +271,30 @@ def test_with_gunicorn(workers):
         print("✓ Server stopped")
 
 
+def ensure_large_test_file():
+    """Ensure the large test file exists, generating it if necessary."""
+    test_dir = Path(__file__).parent
+    large_file_path = test_dir / "mock_large_tweets.js"
+    
+    if not large_file_path.exists():
+        print("  Generating large test file...")
+        # Import and run the generator
+        import sys
+        sys.path.insert(0, str(test_dir))
+        from generate_large_test_file import generate_large_test_file
+        generate_large_test_file(large_file_path)
+    
+    return large_file_path
+
+
 def test_large_file_upload():
     """Test uploading a large file (> 500KB to exceed Flask's default in-memory limit)."""
     print("\n" + "="*70)
     print("Testing Large File Upload")
     print("="*70)
+    
+    # Ensure large test file exists
+    large_file_path = ensure_large_test_file()
     
     # Start webapp in background
     env = os.environ.copy()
@@ -300,10 +319,7 @@ def test_large_file_upload():
             return False
         print("✓ Health endpoint working")
         
-        # Test large file upload
-        test_dir = Path(__file__).parent
-        large_file_path = test_dir / "mock_large_tweets.js"
-        
+        # Test large file upload (file path already ensured above)
         if not large_file_path.exists():
             print(f"✗ FAILED: Large test file not found at {large_file_path}")
             return False
@@ -357,6 +373,9 @@ def test_large_file_gunicorn():
     print("Testing Large File Upload with Gunicorn (2 workers)")
     print("="*70)
     
+    # Ensure large test file exists
+    large_file_path = ensure_large_test_file()
+    
     env = os.environ.copy()
     env["SECRET_KEY"] = "test_secret_key_large_gunicorn"
     
@@ -390,9 +409,7 @@ def test_large_file_gunicorn():
         for attempt in range(2):
             print(f"\n  Attempt {attempt + 1}/2:")
             
-            test_dir = Path(__file__).parent
-            large_file_path = test_dir / "mock_large_tweets.js"
-            
+            # File path already ensured above
             if not large_file_path.exists():
                 print(f"  ✗ Large test file not found")
                 return False
