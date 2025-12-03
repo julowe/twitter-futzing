@@ -1,7 +1,7 @@
 # Twitter Archive Analyzer
 # Multi-stage build for smaller, more secure container
 
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 
 # Production image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Security: Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
