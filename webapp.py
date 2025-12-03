@@ -46,25 +46,59 @@ _secret_key = os.environ.get("SECRET_KEY")
 if not _secret_key:
     # Use a persistent secret key file for multi-worker consistency
     # This ensures all gunicorn workers use the same secret key
+    # Note: For better security, set SECRET_KEY environment variable explicitly
     secret_key_file = Path(tempfile.gettempdir()) / "twitter_analyzer_secret.key"
     
-    if secret_key_file.exists():
-        # Read existing secret key
+    try:
+        if secret_key_file.exists():
+            # Read existing secret key
+            with open(secret_key_file, 'r') as f:
+                _secret_key = f.read().strip()
+            
+            # Validate the key format (should be 64-char hex from secrets.token_hex(32))
+            if not re.match(r'^[a-f0-9]{64}$', _secret_key):
+                # Invalid key, regenerate
+                _secret_key = None
+        
+        if not _secret_key:
+            # Generate and save new secret key atomically
+            import warnings
+            warnings.warn(
+                "SECRET_KEY not set. Generating persistent key for multi-worker support. "
+                "For production, set SECRET_KEY environment variable for better security.",
+                RuntimeWarning
+            )
+            _secret_key = secrets.token_hex(32)
+            
+            # Atomic write: open with exclusive creation and restrictive permissions
+            fd = os.open(str(secret_key_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    f.write(_secret_key)
+            except:
+                # If write fails, close fd and re-raise
+                os.close(fd)
+                raise
+    
+    except FileExistsError:
+        # File was created between check and creation (race condition)
+        # Read the existing file
         with open(secret_key_file, 'r') as f:
             _secret_key = f.read().strip()
-    else:
-        # Generate and save new secret key
+        
+        # Validate format
+        if not re.match(r'^[a-f0-9]{64}$', _secret_key):
+            raise ValueError(f"Invalid secret key format in {secret_key_file}")
+    
+    except (OSError, IOError) as e:
+        # Fall back to runtime-only key if file operations fail
         import warnings
         warnings.warn(
-            "SECRET_KEY not set. Generating persistent key for multi-worker support. "
-            "Set SECRET_KEY environment variable for production.",
+            f"Failed to read/write secret key file: {e}. Using runtime-only key. "
+            "Sessions will not persist across worker restarts.",
             RuntimeWarning
         )
         _secret_key = secrets.token_hex(32)
-        # Save with restrictive permissions
-        secret_key_file.touch(mode=0o600)
-        with open(secret_key_file, 'w') as f:
-            f.write(_secret_key)
 
 app.secret_key = _secret_key
 
