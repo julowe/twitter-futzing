@@ -6,6 +6,7 @@ Provides interactive visualizations and data tables.
 
 import io
 import os
+import re
 import secrets
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -267,10 +268,7 @@ BASE_TEMPLATE = """
         .data-table tr:hover {
             background: #f0f8ff;
         }
-        .data-table tr.expandable-row {
-            cursor: pointer;
-        }
-        .data-table tr.expanded .text-cell {
+        .data-table .text-cell {
             white-space: normal;
             word-wrap: break-word;
         }
@@ -585,9 +583,9 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
-                    <tr class="expandable-row" data-full-text="{{ tweet.text | e }}">
+                    <tr>
                         <td>{{ tweet.id_str }}</td>
-                        <td class="text-cell">{{ tweet.text[:100] }}{% if tweet.text|length > 100 %}...{% endif %}</td>
+                        <td class="text-cell">{{ tweet.text | convert_twitter_links | safe }}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
                         <td>{{ tweet.date }}</td>
@@ -619,11 +617,11 @@ RESULTS_CONTENT = """
                 </thead>
                 <tbody id="data-preview-body">
                     {% for row in preview_data %}
-                    <tr class="expandable-row" data-full-text="{{ row.text | e }}">
+                    <tr>
                         <td>{{ row.record_type }}</td>
                         <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
-                        <td class="text-cell">{{ row.text[:80] }}{% if row.text|length > 80 %}...{% endif %}</td>
+                        <td class="text-cell">{{ row.text | convert_twitter_links | safe }}</td>
                         <td>{{ row.source }}</td>
                     </tr>
                     {% endfor %}
@@ -637,7 +635,7 @@ RESULTS_CONTENT = """
 </div>
 """
 
-RESULTS_SCRIPTS = """
+RESULTS_SCRIPTS = r"""
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const tabs = document.querySelectorAll('.tab');
@@ -662,6 +660,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return div.innerHTML;
     }
     
+    // Function to convert Twitter t.co links to hyperlinks
+    function convertTwitterLinks(text) {
+        if (!text) return text;
+        // Pattern to match http:// or https:// followed by t.co/ and any characters
+        const pattern = /https?:\/\/t\.co\/\S+/g;
+        // Replace with HTML link that opens in new window
+        return text.replace(pattern, '<a href="$&" target="_blank" rel="noopener noreferrer">Link</a>');
+    }
+    
     // Function to update count badges
     function updateCount(elementId, count) {
         const countElement = document.getElementById(elementId);
@@ -669,41 +676,6 @@ document.addEventListener('DOMContentLoaded', function() {
             countElement.textContent = `(Showing ${count})`;
         }
     }
-    
-    // Function to make rows expandable
-    function makeRowsExpandable(tableId) {
-        const tbody = document.getElementById(tableId);
-        if (!tbody) return;
-        
-        tbody.addEventListener('click', function(e) {
-            const row = e.target.closest('tr.expandable-row');
-            if (!row) return;
-            
-            const textCell = row.querySelector('.text-cell');
-            if (!textCell) return;
-            
-            const fullText = row.dataset.fullText;
-            if (!fullText) return;
-            
-            // Toggle expanded state
-            if (row.classList.contains('expanded')) {
-                // Collapse - show truncated text
-                const isTweets = tableId === 'top-tweets-body';
-                const maxLen = isTweets ? 100 : 80;
-                const truncated = fullText.length > maxLen ? fullText.substring(0, maxLen) + '...' : fullText;
-                textCell.textContent = truncated;
-                row.classList.remove('expanded');
-            } else {
-                // Expand - show full text
-                textCell.textContent = fullText;
-                row.classList.add('expanded');
-            }
-        });
-    }
-    
-    // Initialize expandable rows
-    makeRowsExpandable('top-tweets-body');
-    makeRowsExpandable('data-preview-body');
     
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
@@ -723,12 +695,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.tweets && data.tweets.length > 0) {
                     data.tweets.forEach(tweet => {
                         const row = document.createElement('tr');
-                        row.className = 'expandable-row';
-                        row.dataset.fullText = tweet.text;
-                        const text = tweet.text.length > 100 ? tweet.text.substring(0, 100) + '...' : tweet.text;
+                        const textWithLinks = convertTwitterLinks(escapeHtml(tweet.text));
                         row.innerHTML = `
                             <td>${escapeHtml(tweet.id_str)}</td>
-                            <td class="text-cell">${escapeHtml(text)}</td>
+                            <td class="text-cell">${textWithLinks}</td>
                             <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.date)}</td>
@@ -778,14 +748,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.records && data.records.length > 0) {
                     data.records.forEach(record => {
                         const row = document.createElement('tr');
-                        row.className = 'expandable-row';
-                        row.dataset.fullText = record.text;
-                        const text = record.text.length > 80 ? record.text.substring(0, 80) + '...' : record.text;
+                        const textWithLinks = convertTwitterLinks(escapeHtml(record.text));
                         row.innerHTML = `
                             <td>${escapeHtml(record.record_type)}</td>
                             <td>${escapeHtml(record.id_str)}</td>
                             <td>${escapeHtml(record.date)}</td>
-                            <td class="text-cell">${escapeHtml(text)}</td>
+                            <td class="text-cell">${textWithLinks}</td>
                             <td>${escapeHtml(record.source)}</td>
                         `;
                         tbody.appendChild(row);
@@ -829,7 +797,19 @@ def format_number(value):
         return str(value)
 
 
+def convert_twitter_links(text):
+    """Convert Twitter t.co links to HTML hyperlinks labeled 'Link'."""
+    if not text:
+        return text
+    # Pattern to match http:// or https:// followed by t.co/ and any characters
+    pattern = r'https?://t\.co/\S+'
+    # Replace with HTML link that opens in new window
+    replaced = re.sub(pattern, r'<a href="\g<0>" target="_blank" rel="noopener noreferrer">Link</a>', text)
+    return replaced
+
+
 app.jinja_env.filters["format_number"] = format_number
+app.jinja_env.filters["convert_twitter_links"] = convert_twitter_links
 
 
 @app.route("/")
