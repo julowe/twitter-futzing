@@ -271,6 +271,176 @@ def test_with_gunicorn(workers):
         print("✓ Server stopped")
 
 
+def test_large_file_upload():
+    """Test uploading a large file (> 500KB to exceed Flask's default in-memory limit)."""
+    print("\n" + "="*70)
+    print("Testing Large File Upload")
+    print("="*70)
+    
+    # Start webapp in background
+    env = os.environ.copy()
+    env["SECRET_KEY"] = "test_secret_key_large_file"
+    
+    proc = subprocess.Popen(
+        [sys.executable, "webapp.py"],
+        cwd=Path(__file__).parent.parent,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    
+    # Wait for server to start
+    time.sleep(3)
+    
+    try:
+        # Test health endpoint
+        response = requests.get("http://localhost:5000/health", timeout=5)
+        if response.status_code != 200:
+            print(f"✗ FAILED: Health check returned {response.status_code}")
+            return False
+        print("✓ Health endpoint working")
+        
+        # Test large file upload
+        test_dir = Path(__file__).parent
+        large_file_path = test_dir / "mock_large_tweets.js"
+        
+        if not large_file_path.exists():
+            print(f"✗ FAILED: Large test file not found at {large_file_path}")
+            return False
+        
+        file_size_mb = large_file_path.stat().st_size / (1024 * 1024)
+        print(f"  Large file size: {file_size_mb:.2f} MB")
+        
+        session = requests.Session()
+        
+        # Upload large file
+        with open(large_file_path, "rb") as f:
+            files = [("files", ("mock_large_tweets.js", f, "application/javascript"))]
+            upload_response = session.post("http://localhost:5000/upload", files=files, allow_redirects=False, timeout=30)
+        
+        if upload_response.status_code != 302:
+            print(f"✗ FAILED: Large file upload returned {upload_response.status_code}")
+            return False
+        print(f"✓ Large file upload successful")
+        
+        # Test that data is accessible via pagination
+        pagination_response = session.get("http://localhost:5000/api/top-tweets?offset=0&limit=10", timeout=10)
+        if pagination_response.status_code != 200:
+            print(f"✗ FAILED: Pagination after large upload returned {pagination_response.status_code}")
+            print(f"   Response: {pagination_response.text}")
+            return False
+        
+        data = pagination_response.json()
+        if "tweets" not in data:
+            print("✗ FAILED: No tweets in response after large file upload")
+            return False
+        
+        total = data.get("total", 0)
+        print(f"✓ Pagination working after large upload ({len(data.get('tweets', []))} tweets loaded, {total} total)")
+        
+        # Verify we got a substantial number of tweets
+        if total < 1000:
+            print(f"✗ WARNING: Expected > 1000 tweets but got {total}")
+        
+        return True
+        
+    finally:
+        # Stop the server
+        proc.terminate()
+        proc.wait(timeout=5)
+        print("✓ Server stopped")
+
+
+def test_large_file_gunicorn():
+    """Test large file upload with gunicorn (2 workers)."""
+    print("\n" + "="*70)
+    print("Testing Large File Upload with Gunicorn (2 workers)")
+    print("="*70)
+    
+    env = os.environ.copy()
+    env["SECRET_KEY"] = "test_secret_key_large_gunicorn"
+    
+    # Start gunicorn with 2 workers
+    proc = subprocess.Popen(
+        [
+            "gunicorn",
+            "--bind", "0.0.0.0:5002",
+            "--workers", "2",
+            "--timeout", "60",
+            "webapp:app"
+        ],
+        cwd=Path(__file__).parent.parent,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    
+    # Wait for server to start
+    time.sleep(5)
+    
+    try:
+        # Test health endpoint
+        response = requests.get("http://localhost:5002/health", timeout=5)
+        if response.status_code != 200:
+            print(f"✗ FAILED: Health check returned {response.status_code}")
+            return False
+        print("✓ Health endpoint working")
+        
+        # Test large file upload multiple times to hit different workers
+        for attempt in range(2):
+            print(f"\n  Attempt {attempt + 1}/2:")
+            
+            test_dir = Path(__file__).parent
+            large_file_path = test_dir / "mock_large_tweets.js"
+            
+            if not large_file_path.exists():
+                print(f"  ✗ Large test file not found")
+                return False
+            
+            session = requests.Session()
+            
+            # Upload large file
+            with open(large_file_path, "rb") as f:
+                files = [("files", ("mock_large_tweets.js", f, "application/javascript"))]
+                upload_response = session.post("http://localhost:5002/upload", files=files, allow_redirects=False, timeout=30)
+            
+            if upload_response.status_code != 302:
+                print(f"  ✗ Upload attempt {attempt + 1} failed: {upload_response.status_code}")
+                return False
+            print(f"  ✓ Upload successful")
+            
+            # Test pagination (may hit different worker)
+            pagination_response = session.get("http://localhost:5002/api/top-tweets?offset=0&limit=10", timeout=10)
+            if pagination_response.status_code != 200:
+                print(f"  ✗ Pagination failed: {pagination_response.status_code}")
+                print(f"     Response: {pagination_response.text}")
+                return False
+            
+            data = pagination_response.json()
+            if "tweets" not in data:
+                print(f"  ✗ No tweets in response")
+                return False
+            
+            total = data.get("total", 0)
+            print(f"  ✓ Pagination working ({len(data.get('tweets', []))} tweets, {total} total)")
+            
+            # Small delay between attempts
+            time.sleep(0.5)
+        
+        print(f"\n✓ All 2 attempts successful with 2 workers")
+        return True
+        
+    finally:
+        # Stop the server
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        print("✓ Server stopped")
+
+
 def main():
     """Run all tests."""
     print("\n" + "="*70)
@@ -279,9 +449,11 @@ def main():
     
     tests = [
         ("Session Storage", test_session_storage),
+        ("Large File Upload (single worker)", test_large_file_upload),
         ("Single Worker (python)", test_webapp_single_worker),
         ("Gunicorn (1 worker)", test_webapp_gunicorn_single),
         ("Gunicorn (2 workers)", test_webapp_gunicorn_multi),
+        ("Large File Upload (gunicorn 2 workers)", test_large_file_gunicorn),
     ]
     
     results = []
