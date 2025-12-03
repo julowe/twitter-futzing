@@ -111,12 +111,12 @@ if not _secret_key:
         # Read and validate the existing file
         _secret_key = read_and_validate_secret_key(secret_key_file)
         if not _secret_key:
-            raise ValueError(f"Invalid secret key format in {secret_key_file}")
+            raise ValueError("Invalid secret key format in persistent key file")
     
     except (OSError, IOError) as e:
         # Fall back to runtime-only key if file operations fail
         warnings.warn(
-            f"Failed to read/write secret key file: {e}. Using runtime-only key. "
+            "Failed to access persistent secret key file. Using runtime-only key. "
             "Sessions will not persist across worker restarts.",
             RuntimeWarning
         )
