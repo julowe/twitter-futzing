@@ -228,6 +228,22 @@ Benefits:
 Updated `save_charts_as_images()` function with:
 - Explicit check for kaleido availability
 - Clear error messages with installation instructions
+- **Automatic fallback to kaleido's own Chrome**: If image export fails (e.g., due to incompatible system Chrome), the function automatically downloads kaleido's own Chrome using `kaleido.get_chrome_sync()` and retries
+- Better context when individual chart rendering fails
+- Distinguishes between ImportError and RuntimeError
+
+```python
+try:
+    fig.write_image(filepath)
+    saved.append(filepath)
+except Exception as e:
+    # On first failure, try downloading kaleido's own Chrome
+    if not chrome_downloaded:
+        kaleido.get_chrome_sync()
+        chrome_downloaded = True
+        fig.write_image(filepath)  # Retry
+        saved.append(filepath)
+```
 - Better context when individual chart rendering fails
 - Distinguishes between ImportError and RuntimeError
 

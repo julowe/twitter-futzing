@@ -205,7 +205,7 @@ def save_charts_as_images(
         
     Raises:
         ImportError: If kaleido is not installed.
-        RuntimeError: If kaleido fails to render images.
+        RuntimeError: If kaleido fails to render images even after downloading its own Chrome.
     """
     # Check if kaleido is available
     try:
@@ -218,6 +218,7 @@ def save_charts_as_images(
     
     os.makedirs(output_dir, exist_ok=True)
     saved = []
+    chrome_downloaded = False
 
     for name, fig in charts.items():
         if fig is not None:
@@ -226,12 +227,31 @@ def save_charts_as_images(
                 fig.write_image(filepath)
                 saved.append(filepath)
             except Exception as e:
-                # Re-raise with more context
-                raise RuntimeError(
-                    f"Failed to save chart '{name}' to {filepath}. "
-                    f"Error: {str(e)}. "
-                    f"Make sure kaleido is properly installed: pip install 'kaleido>=1.0.0'"
-                ) from e
+                # If this is the first failure and we haven't tried downloading Chrome yet,
+                # attempt to download kaleido's own Chrome and retry
+                if not chrome_downloaded:
+                    try:
+                        # Download kaleido's own version of Chrome
+                        kaleido.get_chrome_sync()
+                        chrome_downloaded = True
+                        # Retry saving this chart
+                        fig.write_image(filepath)
+                        saved.append(filepath)
+                    except Exception as retry_error:
+                        # Re-raise with more context
+                        raise RuntimeError(
+                            f"Failed to save chart '{name}' to {filepath}. "
+                            f"Error: {str(retry_error)}. "
+                            f"Tried downloading kaleido's Chrome but still failed. "
+                            f"Make sure kaleido is properly installed: pip install 'kaleido>=1.0.0'"
+                        ) from retry_error
+                else:
+                    # Already tried downloading Chrome, just re-raise
+                    raise RuntimeError(
+                        f"Failed to save chart '{name}' to {filepath}. "
+                        f"Error: {str(e)}. "
+                        f"Make sure kaleido is properly installed: pip install 'kaleido>=1.0.0'"
+                    ) from e
 
     return saved
 
