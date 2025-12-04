@@ -20,10 +20,23 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production image
 FROM python:3.12-slim
 
-# Install Chromium for kaleido (needed for PNG chart generation)
+# Install Chromium and its dependencies for kaleido (needed for PNG chart generation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
+    # Chromium dependencies for headless mode
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Security: Create non-root user
