@@ -190,9 +190,6 @@ def test_download_with_multiple_file_types():
             file_list = zip_file.namelist()
             csv_files = [f for f in file_list if f.endswith('.csv')]
             
-            # Should have per-type CSV files
-            type_csv_files = [f for f in csv_files if f not in ['twitter_records_']]
-            
             print(f"✓ ZIP contains {len(csv_files)} CSV files:")
             for csv_file in sorted(csv_files):
                 print(f"  - {csv_file}")
