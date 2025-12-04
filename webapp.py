@@ -951,12 +951,13 @@ def get_tweet_link_url(row) -> str:
         # Try to get edit_tweet_id first (preferred)
         edit_id = row.get("edit_tweet_id")
         # pd.isna() safely handles None, NaN, pd.NA, etc. for both pandas and regular types
-        if edit_id is not None and not pd.isna(edit_id):
+        # Also check for empty string
+        if edit_id is not None and not pd.isna(edit_id) and str(edit_id).strip():
             tweet_id = str(edit_id)
         else:
             # Fall back to id_str
             id_str = row.get("id_str", "")
-            if id_str and not pd.isna(id_str):
+            if id_str and not pd.isna(id_str) and str(id_str).strip():
                 tweet_id = str(id_str)
     except (AttributeError, KeyError):
         # If get() doesn't work, return placeholder
