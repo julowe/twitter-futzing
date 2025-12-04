@@ -715,7 +715,7 @@ RESULTS_CONTENT = """
             <table class="data-table" id="top-tweets-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>Link</th>
                         <th>Text</th>
                         <th>Favorites</th>
                         <th>Retweets</th>
@@ -725,7 +725,7 @@ RESULTS_CONTENT = """
                 <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
                     <tr>
-                        <td>{{ tweet.id_str }}</td>
+                        <td><a href="{{ tweet.link_url }}" target="_blank" rel="noopener noreferrer">Link</a></td>
                         <td class="text-cell">{{ tweet.text }}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
@@ -750,7 +750,7 @@ RESULTS_CONTENT = """
                 <thead>
                     <tr>
                         <th>Type</th>
-                        <th>ID</th>
+                        <th>Link</th>
                         <th>Date</th>
                         <th>Text</th>
                         <th>Source</th>
@@ -760,7 +760,7 @@ RESULTS_CONTENT = """
                     {% for row in preview_data %}
                     <tr>
                         <td>{{ row.record_type }}</td>
-                        <td>{{ row.id_str }}</td>
+                        <td><a href="{{ row.link_url }}" target="_blank" rel="noopener noreferrer">Link</a></td>
                         <td>{{ row.date }}</td>
                         <td class="text-cell">{{ row.text }}</td>
                         <td>{{ row.source }}</td>
@@ -828,7 +828,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     data.tweets.forEach(tweet => {
                         const row = document.createElement('tr');
                         row.innerHTML = `
-                            <td>${escapeHtml(tweet.id_str)}</td>
+                            <td><a href="${escapeHtml(tweet.link_url)}" target="_blank" rel="noopener noreferrer">Link</a></td>
                             <td class="text-cell">${escapeHtml(tweet.text)}</td>
                             <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
@@ -881,7 +881,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>${escapeHtml(record.record_type)}</td>
-                            <td>${escapeHtml(record.id_str)}</td>
+                            <td><a href="${escapeHtml(record.link_url)}" target="_blank" rel="noopener noreferrer">Link</a></td>
                             <td>${escapeHtml(record.date)}</td>
                             <td class="text-cell">${escapeHtml(record.text)}</td>
                             <td>${escapeHtml(record.source)}</td>
@@ -925,6 +925,37 @@ def format_number(value):
         return f"{int(value):,}"
     except (ValueError, TypeError):
         return str(value)
+
+
+def get_tweet_link_url(row) -> str:
+    """Generate the tweet link URL.
+    
+    Uses edit_tweet_id if available, otherwise falls back to id_str.
+    
+    Args:
+        row: DataFrame row or dict with tweet data.
+        
+    Returns:
+        URL string for the tweet on X/Twitter.
+    """
+    # Get the tweet ID to use for the link
+    tweet_id = None
+    
+    # Try to get edit_tweet_id first (preferred)
+    if hasattr(row, 'get'):
+        # Dictionary-like access
+        tweet_id = row.get("edit_tweet_id") or row.get("id_str", "")
+    else:
+        # DataFrame row access
+        tweet_id = row.get("edit_tweet_id", None)
+        if not tweet_id or (hasattr(tweet_id, '__iter__') and not isinstance(tweet_id, str) and pd.isna(tweet_id)):
+            tweet_id = row.get("id_str", "")
+    
+    # Construct the URL
+    if tweet_id:
+        return f"https://x.com/user/status/{tweet_id}"
+    else:
+        return "#"
 
 
 app.jinja_env.filters["format_number"] = format_number
@@ -1042,6 +1073,7 @@ def results():
                     "favorite_count": row.get("favorite_count", 0),
                     "retweet_count": row.get("retweet_count", 0) or 0,
                     "date": date_str,
+                    "link_url": get_tweet_link_url(row),
                 }
             )
 
@@ -1060,6 +1092,7 @@ def results():
                 "date": date_str,
                 "text": row.get("text", "") or "",
                 "source": row.get("source", "") or "",
+                "link_url": get_tweet_link_url(row),
             }
         )
 
@@ -1118,6 +1151,7 @@ def api_top_tweets():
                     "favorite_count": row.get("favorite_count", 0),
                     "retweet_count": row.get("retweet_count", 0) or 0,
                     "date": date_str,
+                    "link_url": get_tweet_link_url(row),
                 }
             )
         
@@ -1164,6 +1198,7 @@ def api_data_preview():
                 "date": date_str,
                 "text": row.get("text", "") or "",
                 "source": row.get("source", "") or "",
+                "link_url": get_tweet_link_url(row),
             }
         )
     
