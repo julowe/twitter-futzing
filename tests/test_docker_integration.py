@@ -10,6 +10,12 @@ This test builds the Docker image and verifies that:
 5. PNG files are valid
 
 Run with: python tests/test_docker_integration.py
+
+Note: This test requires Docker to be installed and running.
+If the Docker build fails due to network/SSL issues, you can:
+1. Build the image manually: docker build -t twitter-analyzer .
+2. Run the container: docker run -d -p 8765:8080 --name test-container twitter-analyzer
+3. Test manually using the steps shown in this script
 """
 
 import subprocess
@@ -22,19 +28,20 @@ from pathlib import Path
 import requests
 
 
-def run_command(cmd, check=True):
+def run_command(cmd, check=True, capture_output=True):
     """Run a shell command and return output."""
     result = subprocess.run(
         cmd,
         shell=True,
-        capture_output=True,
+        capture_output=capture_output,
         text=True
     )
     if check and result.returncode != 0:
         print(f"✗ Command failed: {cmd}")
-        print(f"  stdout: {result.stdout}")
-        print(f"  stderr: {result.stderr}")
-        sys.exit(1)
+        if capture_output:
+            print(f"  stdout: {result.stdout}")
+            print(f"  stderr: {result.stderr}")
+        return None
     return result
 
 
@@ -52,17 +59,37 @@ def main():
     try:
         # Step 1: Build Docker image
         print("\nStep 1: Building Docker image...")
-        result = run_command(f"docker build -t {image_name} .")
+        print("  This may take several minutes...")
+        result = run_command(f"docker build -t {image_name} . 2>&1 | tail -50", check=False)
+        
+        if result is None or result.returncode != 0:
+            print("\n✗ Docker build failed!")
+            print("\nThis is usually caused by:")
+            print("  1. Network connectivity issues")
+            print("  2. SSL certificate problems (corporate proxies)")
+            print("  3. Docker not running")
+            print("\nTo test manually:")
+            print(f"  1. Build: docker build -t {image_name} .")
+            print(f"  2. Run: docker run -d -p {test_port}:8080 --name {container_name} {image_name}")
+            print(f"  3. Test: curl http://localhost:{test_port}/health")
+            print(f"  4. Access: http://localhost:{test_port}/")
+            print("\nIf build succeeds but PNG generation fails, check container logs:")
+            print(f"  docker logs {container_name}")
+            sys.exit(1)
+        
         print("✓ Docker image built successfully")
         
         # Step 2: Start container
         print("\nStep 2: Starting Docker container...")
-        run_command(
+        result = run_command(
             f"docker run -d --name {container_name} "
             f"-p {test_port}:8080 "
             f"-e SECRET_KEY=test-secret-key-for-docker-testing "
             f"{image_name}"
         )
+        if result is None:
+            print("✗ Failed to start container")
+            sys.exit(1)
         print("✓ Docker container started")
         
         # Step 3: Wait for container to be ready
@@ -80,7 +107,8 @@ def main():
             time.sleep(1)
         else:
             print("\n✗ Container failed to become ready")
-            run_command(f"docker logs {container_name}", check=False)
+            print("\nContainer logs:")
+            run_command(f"docker logs {container_name}", check=False, capture_output=False)
             sys.exit(1)
         
         # Step 4: Test web UI access
@@ -157,10 +185,21 @@ def main():
             if not png_files:
                 print("  ✗ No PNG files found in ZIP")
                 print("    PNG generation failed in Docker!")
-                print("\n  Checking container logs for errors...")
-                result = run_command(f"docker logs {container_name}", check=False)
-                print(result.stdout)
-                print(result.stderr)
+                print("\n  Checking container logs for PNG errors...")
+                result = run_command(
+                    f"docker logs {container_name} 2>&1 | grep -i 'warning.*png\\|error.*png\\|kaleido\\|chromium' | tail -20",
+                    check=False
+                )
+                if result and result.stdout.strip():
+                    print("  Error messages found:")
+                    print(result.stdout)
+                print("\n  Troubleshooting steps:")
+                print("    1. Check if Chromium is installed:")
+                print(f"       docker exec {container_name} chromium --version")
+                print("    2. Check for missing libraries:")
+                print(f"       docker exec {container_name} ldd /usr/bin/chromium | grep 'not found'")
+                print("    3. Test kaleido manually:")
+                print(f"       docker exec {container_name} python3 -c \"import plotly.graph_objects as go; fig = go.Figure(data=[go.Scatter(x=[1,2,3], y=[1,2,3])]); print('Generating...'); img = fig.to_image(format='png'); print(f'Success: {{len(img)}} bytes')\"")
                 sys.exit(1)
             print(f"  ✓ Found {len(png_files)} PNG file(s)")
             
@@ -190,8 +229,11 @@ def main():
         
         # Step 6: Check logs
         print("\nStep 6: Checking container logs for errors...")
-        result = run_command(f"docker logs {container_name} 2>&1 | grep -i 'warning.*png\\|error.*png' || true", check=False)
-        if result.stdout.strip():
+        result = run_command(
+            f"docker logs {container_name} 2>&1 | grep -i 'warning.*png\\|error.*png' | head -5 || true",
+            check=False
+        )
+        if result and result.stdout.strip():
             print("  ⚠ Found PNG-related warnings/errors in logs:")
             print(f"    {result.stdout}")
         else:
@@ -214,9 +256,15 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n\nTest interrupted by user")
+        # Cleanup
+        run_command("docker stop twitter-analyzer-test-container", check=False)
+        run_command("docker rm twitter-analyzer-test-container", check=False)
         sys.exit(1)
     except Exception as e:
         print(f"\n✗ Test failed with error: {e}")
         import traceback
         traceback.print_exc()
+        # Cleanup
+        run_command("docker stop twitter-analyzer-test-container", check=False)
+        run_command("docker rm twitter-analyzer-test-container", check=False)
         sys.exit(1)
