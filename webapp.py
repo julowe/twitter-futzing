@@ -937,15 +937,21 @@ def get_tweet_link_url(row) -> str:
         
     Returns:
         URL string for the tweet on X/Twitter.
+        
+    Note:
+        The URL format uses 'user' as a placeholder, which Twitter/X accepts
+        and redirects to the actual tweet regardless of the username.
     """
     # Get the tweet ID to use for the link
     tweet_id = None
     
     # Handle both dict and pandas Series (DataFrame row)
+    # Both have .get() method - Series.get() is similar to dict.get()
     try:
         # Try to get edit_tweet_id first (preferred)
         edit_id = row.get("edit_tweet_id")
-        if edit_id and not pd.isna(edit_id):
+        # pd.isna() safely handles None, NaN, pd.NA, etc. for both pandas and regular types
+        if edit_id is not None and not pd.isna(edit_id):
             tweet_id = str(edit_id)
         else:
             # Fall back to id_str
