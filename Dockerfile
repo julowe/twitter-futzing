@@ -20,6 +20,12 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production image
 FROM python:3.12-slim
 
+# Install Chromium for kaleido (needed for PNG chart generation)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
 # Security: Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
@@ -46,6 +52,8 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8080
+# Point kaleido to the Chromium binary
+ENV CHROME_PATH=/usr/bin/chromium
 # SECRET_KEY: Not set by default. The app will create a persistent key file.
 # For production deployments, set SECRET_KEY environment variable for better security:
 # docker run -e SECRET_KEY="your-secret-key" -p 8080:8080 twitter-analyzer
