@@ -11,7 +11,8 @@ gunicorn>=21.0.0
 werkzeug>=3.0.0
 
 # Image export for CLI (optional but recommended)
-kaleido>=0.2.1
+# Note: kaleido 1.0.0+ uses a self-contained rendering engine and doesn't require Chrome/Chromium
+kaleido>=1.0.0
 
 # Jupyter notebook support (optional, for notebook compatibility)
 ipywidgets>=8.0.0

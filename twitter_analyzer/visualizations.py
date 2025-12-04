@@ -202,15 +202,36 @@ def save_charts_as_images(
 
     Returns:
         List of saved file paths.
+        
+    Raises:
+        ImportError: If kaleido is not installed.
+        RuntimeError: If kaleido fails to render images.
     """
+    # Check if kaleido is available
+    try:
+        import kaleido
+    except ImportError:
+        raise ImportError(
+            "kaleido is required for image export. "
+            "Install it with: pip install 'kaleido>=1.0.0'"
+        )
+    
     os.makedirs(output_dir, exist_ok=True)
     saved = []
 
     for name, fig in charts.items():
         if fig is not None:
             filepath = os.path.join(output_dir, f"{name}.{format}")
-            fig.write_image(filepath)
-            saved.append(filepath)
+            try:
+                fig.write_image(filepath)
+                saved.append(filepath)
+            except Exception as e:
+                # Re-raise with more context
+                raise RuntimeError(
+                    f"Failed to save chart '{name}' to {filepath}. "
+                    f"Error: {str(e)}. "
+                    f"Make sure kaleido is properly installed: pip install 'kaleido>=1.0.0'"
+                ) from e
 
     return saved
 
