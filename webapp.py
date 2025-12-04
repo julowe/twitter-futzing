@@ -933,7 +933,7 @@ def get_tweet_link_url(row) -> str:
     Uses edit_tweet_id if available, otherwise falls back to id_str.
     
     Args:
-        row: DataFrame row or dict with tweet data.
+        row: DataFrame row (pandas Series) or dict with tweet data.
         
     Returns:
         URL string for the tweet on X/Twitter.
@@ -941,15 +941,20 @@ def get_tweet_link_url(row) -> str:
     # Get the tweet ID to use for the link
     tweet_id = None
     
-    # Try to get edit_tweet_id first (preferred)
-    if hasattr(row, 'get'):
-        # Dictionary-like access
-        tweet_id = row.get("edit_tweet_id") or row.get("id_str", "")
-    else:
-        # DataFrame row access
-        tweet_id = row.get("edit_tweet_id", None)
-        if not tweet_id or (hasattr(tweet_id, '__iter__') and not isinstance(tweet_id, str) and pd.isna(tweet_id)):
-            tweet_id = row.get("id_str", "")
+    # Handle both dict and pandas Series (DataFrame row)
+    try:
+        # Try to get edit_tweet_id first (preferred)
+        edit_id = row.get("edit_tweet_id")
+        if edit_id and not pd.isna(edit_id):
+            tweet_id = str(edit_id)
+        else:
+            # Fall back to id_str
+            id_str = row.get("id_str", "")
+            if id_str and not pd.isna(id_str):
+                tweet_id = str(id_str)
+    except (AttributeError, KeyError):
+        # If get() doesn't work, return placeholder
+        return "#"
     
     # Construct the URL
     if tweet_id:
