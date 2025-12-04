@@ -9,7 +9,6 @@ import os
 import pickle
 import re
 import secrets
-import shutil
 import tempfile
 import warnings
 import zipfile
@@ -40,7 +39,7 @@ from twitter_analyzer.core import (
     summarize,
     process_files,
 )
-from twitter_analyzer.visualizations import generate_all_charts, get_chart_html, save_charts_as_images
+from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 
 
 app = Flask(__name__)
@@ -1221,35 +1220,30 @@ def download():
         # Generate charts
         charts = generate_all_charts(df)
         
-        # Try to save charts as images
-        image_files = []
-        temp_dir = None
+        # Generate charts as PNG images directly to ZIP (no temp files needed)
+        image_names = []
         try:
-            # Create a temporary directory for images
-            temp_dir = tempfile.mkdtemp()
-            image_files = save_charts_as_images(charts, temp_dir, format="png")
-            
-            # Add images to ZIP
-            for img_path in image_files:
-                with open(img_path, 'rb') as img_file:
-                    img_name = os.path.basename(img_path)
-                    zip_file.writestr(img_name, img_file.read())
+            import kaleido
+            for name, fig in charts.items():
+                if fig is not None:
+                    try:
+                        # Generate PNG image directly to bytes (no file I/O)
+                        img_bytes = fig.to_image(format="png")
+                        image_name = f"{name}.png"
+                        zip_file.writestr(image_name, img_bytes)
+                        image_names.append(image_name)
+                    except Exception as chart_error:
+                        # Log error for this specific chart but continue with others
+                        print(f"Warning: Could not generate PNG for '{name}': {chart_error}")
+        except ImportError:
+            # kaleido not available - skip PNG generation, will have HTML charts instead
+            print("Info: kaleido not installed, skipping PNG generation (HTML report will have interactive charts)")
         except Exception as e:
-            # Log the error but continue - we'll still have the HTML report with interactive charts
+            # Unexpected error with kaleido
             print(f"Warning: Could not generate PNG images: {e}")
-            image_files = []  # Reset to empty list on error
-        finally:
-            # Clean up temporary directory
-            if temp_dir:
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
         
         # Generate Markdown report (reusing CLI function)
-        # Filter to ensure only valid string paths are used for basenames
-        image_basenames = [os.path.basename(f) for f in image_files if isinstance(f, str)]
-        md_report = generate_markdown_report(df, summary_text, image_basenames, timestamp)
+        md_report = generate_markdown_report(df, summary_text, image_names, timestamp)
         zip_file.writestr(f"report_{timestamp}.md", md_report)
         
         # Generate HTML report (reusing CLI function)
