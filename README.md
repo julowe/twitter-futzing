@@ -24,6 +24,12 @@ cd twitter-futzing
 pip install -r requirements.txt
 ```
 
+**Note on Image Generation:**
+- The CLI generates PNG images of visualizations using [kaleido](https://github.com/plotly/Kaleido)
+- Kaleido 1.0.0+ uses a self-contained rendering engine and doesn't require Chrome/Chromium
+- If kaleido is not installed, the CLI will still work but skip image generation
+- Interactive charts are always available in the generated HTML report
+
 ### Command Line Usage
 
 ```bash
