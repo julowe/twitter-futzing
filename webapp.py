@@ -11,6 +11,7 @@ import re
 import secrets
 import tempfile
 import warnings
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -24,6 +25,7 @@ from flask import (
     session,
     url_for,
     jsonify,
+    send_file,
 )
 from werkzeug.utils import secure_filename
 
@@ -36,7 +38,7 @@ from twitter_analyzer.core import (
     summarize,
     process_files,
 )
-from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
+from twitter_analyzer.visualizations import generate_all_charts, get_chart_html, save_charts_as_images
 
 
 app = Flask(__name__)
@@ -678,7 +680,10 @@ document.addEventListener('DOMContentLoaded', function() {
 RESULTS_CONTENT = """
 <div class="card">
     <h2>Analysis Results</h2>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary" style="margin-bottom: 20px;">← Upload More Files</a>
+    <div style="margin-bottom: 20px;">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Upload More Files</a>
+        <a href="{{ url_for('download') }}" class="btn" style="float: right;">📥 Download Output Data</a>
+    </div>
     
     <div class="stats-grid">
         <div class="stat-card">
@@ -1172,6 +1177,99 @@ def api_data_preview():
         "has_more": offset + limit < len(df),
         "total": len(df),
     })
+
+
+@app.route("/download")
+def download():
+    """Generate and download a ZIP file containing all output files."""
+    data_id = session.get("data_id")
+    if not data_id:
+        flash("No data available. Please upload files first.", "info")
+        return redirect(url_for("index"))
+    
+    data = load_session_data(data_id)
+    if not data:
+        flash("Session expired. Please upload files again.", "info")
+        return redirect(url_for("index"))
+    
+    df = data["df"]
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Generate and add CSV files
+        # All records CSV
+        csv_all = io.StringIO()
+        df.to_csv(csv_all, index=False)
+        zip_file.writestr(f"twitter_records_{timestamp}.csv", csv_all.getvalue())
+        
+        # Per-type CSV files
+        if "record_type" in df.columns:
+            for typ in sorted(df["record_type"].dropna().unique()):
+                df_sub = df[df["record_type"] == typ]
+                csv_type = io.StringIO()
+                df_sub.to_csv(csv_type, index=False)
+                zip_file.writestr(f"{typ}_{timestamp}.csv", csv_type.getvalue())
+        
+        # Generate summary
+        summary_text = summarize(df)
+        
+        # Generate charts
+        charts = generate_all_charts(df)
+        
+        # Try to save charts as images
+        image_files = []
+        temp_dir = None
+        try:
+            # Create a temporary directory for images
+            temp_dir = tempfile.mkdtemp()
+            image_files = save_charts_as_images(charts, temp_dir, format="png")
+            
+            # Add images to ZIP
+            for img_path in image_files:
+                with open(img_path, 'rb') as img_file:
+                    img_name = os.path.basename(img_path)
+                    zip_file.writestr(img_name, img_file.read())
+        except Exception as e:
+            # Log the error but continue - we'll still have the HTML report with interactive charts
+            print(f"Warning: Could not generate PNG images: {e}")
+        finally:
+            # Clean up temporary directory
+            if temp_dir:
+                try:
+                    import shutil
+                    shutil.rmtree(temp_dir)
+                except Exception:
+                    pass
+        
+        # Generate Markdown report (reusing CLI function)
+        from cli import generate_markdown_report
+        md_report = generate_markdown_report(df, summary_text, 
+                                             [os.path.basename(f) for f in image_files], 
+                                             timestamp)
+        zip_file.writestr(f"report_{timestamp}.md", md_report)
+        
+        # Generate HTML report (reusing CLI function)
+        from cli import generate_html_report
+        charts_html = []
+        for name, fig in charts.items():
+            if fig is not None:
+                charts_html.append(get_chart_html(fig, include_plotlyjs=(len(charts_html) == 0)))
+        
+        html_report = generate_html_report(df, summary_text, charts_html, timestamp)
+        zip_file.writestr(f"report_{timestamp}.html", html_report)
+    
+    # Prepare the ZIP file for download
+    zip_buffer.seek(0)
+    
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'twitter_analysis_{timestamp}.zip'
+    )
 
 
 @app.route("/health")
