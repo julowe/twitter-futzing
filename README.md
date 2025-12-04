@@ -52,14 +52,22 @@ The CLI will generate in the `exports/` directory:
 ### Web Application
 
 ```bash
-# Run locally
+# Run locally (development)
 python webapp.py
 
 # Or with gunicorn (production)
-gunicorn --bind 0.0.0.0:5000 webapp:app
+# IMPORTANT: Set SECRET_KEY for multi-worker deployments
+export SECRET_KEY="your-secret-key-here"
+gunicorn --bind 0.0.0.0:5000 --workers 2 webapp:app
 ```
 
 Then open http://localhost:5000 in your browser to upload files and view interactive results.
+
+**Production Notes:**
+- Always set the `SECRET_KEY` environment variable when running with multiple workers
+- Without SECRET_KEY, a persistent key file is created automatically in the system temp directory
+- Use `--workers` appropriate for your server (typically 2-4 workers)
+- Session data is stored in the system temp directory (`/tmp/` on Linux) under `twitter_analyzer_sessions/` and shared across workers
 
 ### Docker
 

@@ -6,8 +6,13 @@ Provides interactive visualizations and data tables.
 
 import io
 import os
+import pickle
+import re
 import secrets
+import tempfile
+import warnings
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from flask import (
@@ -36,28 +41,165 @@ from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 
 app = Flask(__name__)
 
+# Secret key validation pattern - 64 hex chars from secrets.token_hex(32)
+SECRET_KEY_PATTERN = r'[a-f0-9]{64}'
+
+
+def read_and_validate_secret_key(file_path: Path) -> Optional[str]:
+    """Read and validate secret key from file.
+    
+    Args:
+        file_path: Path to the secret key file
+        
+    Returns:
+        Valid secret key string or None if invalid/not found
+    """
+    try:
+        with open(file_path, 'r') as f:
+            key = f.read().strip()
+        
+        # Validate the key format
+        if re.fullmatch(SECRET_KEY_PATTERN, key):
+            return key
+    except (OSError, IOError):
+        pass
+    
+    return None
+
+
 # Secret key configuration - in production, always set SECRET_KEY environment variable
-# to a consistent value to preserve sessions across restarts
+# to a consistent value to preserve sessions across restarts and workers
 _secret_key = os.environ.get("SECRET_KEY")
 if not _secret_key:
-    import warnings
-    warnings.warn(
-        "SECRET_KEY not set. Using randomly generated key. "
-        "Sessions will be invalidated on restart. "
-        "Set SECRET_KEY environment variable for production.",
-        RuntimeWarning
-    )
-    _secret_key = secrets.token_hex(32)
+    # Use a persistent secret key file for multi-worker consistency
+    # This ensures all gunicorn workers use the same secret key
+    # Note: For better security, set SECRET_KEY environment variable explicitly
+    secret_key_file = Path(tempfile.gettempdir()) / "twitter_analyzer_secret.key"
+    
+    try:
+        # Try to read existing key
+        _secret_key = read_and_validate_secret_key(secret_key_file)
+        
+        if not _secret_key:
+            # Generate and save new secret key atomically
+            warnings.warn(
+                "SECRET_KEY not set. Generating persistent key for multi-worker support. "
+                "For production, set SECRET_KEY environment variable for better security.",
+                RuntimeWarning
+            )
+            _secret_key = secrets.token_hex(32)
+            
+            # Atomic write: open with exclusive creation and restrictive permissions
+            # Use try-finally to ensure file descriptor cleanup
+            fd = None
+            try:
+                fd = os.open(str(secret_key_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                # Transfer fd ownership to fdopen
+                with os.fdopen(fd, 'w') as f:
+                    fd = None  # fd now owned by file object, will be closed by context manager
+                    f.write(_secret_key)
+            finally:
+                # Ensure fd is closed if fdopen failed
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+    
+    except FileExistsError:
+        # File was created between check and creation (race condition)
+        # Read and validate the existing file
+        _secret_key = read_and_validate_secret_key(secret_key_file)
+        if not _secret_key:
+            raise ValueError("Invalid secret key format in persistent key file")
+    
+    except (OSError, IOError) as e:
+        # Fall back to runtime-only key if file operations fail
+        warnings.warn(
+            "Failed to access persistent secret key file. Using runtime-only key. "
+            "Sessions will not persist across worker restarts.",
+            RuntimeWarning
+        )
+        _secret_key = secrets.token_hex(32)
+
 app.secret_key = _secret_key
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
-# Session data storage
-# NOTE: This in-memory storage is suitable for single-instance demo deployments.
-# For production with multiple workers/instances, use Redis, database, or
-# client-side session storage (e.g., Flask-Session with Redis backend).
-# Data is isolated per session ID and automatically cleaned on browser close.
-session_data: Dict[str, Dict] = {}
+# Session data storage directory
+# Uses a shared temporary directory that works across gunicorn workers
+# Security note: pickle is used for efficient DataFrame serialization.
+# This is safe because:
+# 1. Session IDs are cryptographically random (secrets.token_hex)
+# 2. Session IDs are strictly validated (32-char hex only)
+# 3. Directory has restrictive permissions (0o700, owner-only)
+# 4. Path traversal is prevented via validation
+# 5. Only application-generated data (DataFrames) is pickled, not user input
+# 6. Pickle files are never directly accessible to users
+SESSION_DATA_DIR = Path(tempfile.gettempdir()) / "twitter_analyzer_sessions"
+SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
+
+
+def is_valid_session_id(session_id: str) -> bool:
+    """Validate session ID to prevent directory traversal attacks."""
+    # Only allow hexadecimal characters (from secrets.token_hex), 32 chars length
+    return bool(re.match(r'^[a-f0-9]{32}$', session_id))
+
+
+def save_session_data(session_id: str, data: Dict) -> None:
+    """Save session data to disk for multi-worker compatibility.
+    
+    Security: Uses pickle for DataFrame serialization. Session IDs are validated
+    and directory has restrictive permissions to prevent unauthorized access.
+    """
+    if not is_valid_session_id(session_id):
+        raise ValueError("Invalid session ID")
+    
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    with open(file_path, 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_session_data(session_id: str) -> Optional[Dict]:
+    """Load session data from disk.
+    
+    Security: Session ID is validated before use. Path verification prevents
+    directory traversal. Only loads files from protected session directory.
+    """
+    if not is_valid_session_id(session_id):
+        return None
+    
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    if not file_path.exists():
+        return None
+    
+    # Verify the file is within our session directory to prevent traversal
+    try:
+        if not file_path.resolve().parent.samefile(SESSION_DATA_DIR):
+            return None
+    except (OSError, ValueError):
+        return None
+    
+    try:
+        with open(file_path, 'rb') as f:
+            return pickle.load(f)
+    except (pickle.PickleError, EOFError, OSError):
+        # Handle expected errors: corrupted pickle, truncated file, I/O errors
+        return None
+
+
+def delete_session_data(session_id: str) -> None:
+    """Delete session data file."""
+    if not is_valid_session_id(session_id):
+        return
+    
+    file_path = SESSION_DATA_DIR / f"{session_id}.pkl"
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+
 
 ALLOWED_EXTENSIONS = {".js", ".json"}
 
@@ -267,11 +409,42 @@ BASE_TEMPLATE = """
         .data-table tr:hover {
             background: #f0f8ff;
         }
+        .data-table .text-cell {
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        .count-badge {
+            font-size: 0.7em;
+            font-weight: normal;
+            color: #666;
+        }
         .table-container {
-            max-height: 400px;
+            max-height: calc(100vh - 500px);
+            min-height: 300px;
             overflow-y: auto;
             border-radius: 8px;
             border: 1px solid #ddd;
+        }
+        .load-more-btn {
+            margin-top: 15px;
+            text-align: center;
+        }
+        .load-more-btn button {
+            padding: 10px 20px;
+            background: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+        .load-more-btn button:hover {
+            background: #0d8ecf;
+        }
+        .load-more-btn button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .stats-grid {
             display: grid;
@@ -536,10 +709,10 @@ RESULTS_CONTENT = """
     </div>
     
     <div id="top-tweets" class="tab-content">
-        <h3>Top Tweets by Favorites</h3>
+        <h3>Top Tweets by Favorites <span id="top-tweets-count" class="count-badge">(Showing {{ top_tweets|length }})</span></h3>
         {% if top_tweets %}
         <div class="table-container">
-            <table class="data-table">
+            <table class="data-table" id="top-tweets-table">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -549,11 +722,11 @@ RESULTS_CONTENT = """
                         <th>Date</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
                     <tr>
                         <td>{{ tweet.id_str }}</td>
-                        <td>{{ tweet.text[:100] }}{% if tweet.text|length > 100 %}...{% endif %}</td>
+                        <td class="text-cell">{{ tweet.text }}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
                         <td>{{ tweet.date }}</td>
@@ -562,15 +735,18 @@ RESULTS_CONTENT = """
                 </tbody>
             </table>
         </div>
+        <div class="load-more-btn">
+            <button id="load-more-tweets" data-offset="20">Load More...</button>
+        </div>
         {% else %}
         <p>No tweets with engagement data available.</p>
         {% endif %}
     </div>
     
     <div id="data" class="tab-content">
-        <h3>Data Preview (First 100 records)</h3>
+        <h3>Data Preview <span id="data-preview-count" class="count-badge">(Showing {{ preview_data|length }})</span></h3>
         <div class="table-container">
-            <table class="data-table">
+            <table class="data-table" id="data-preview-table">
                 <thead>
                     <tr>
                         <th>Type</th>
@@ -580,24 +756,27 @@ RESULTS_CONTENT = """
                         <th>Source</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="data-preview-body">
                     {% for row in preview_data %}
                     <tr>
                         <td>{{ row.record_type }}</td>
                         <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
-                        <td>{{ row.text[:80] }}{% if row.text|length > 80 %}...{% endif %}</td>
+                        <td class="text-cell">{{ row.text }}</td>
                         <td>{{ row.source }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="load-more-btn">
+            <button id="load-more-data" data-offset="100">Load More...</button>
+        </div>
     </div>
 </div>
 """
 
-RESULTS_SCRIPTS = """
+RESULTS_SCRIPTS = r"""
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const tabs = document.querySelectorAll('.tab');
@@ -614,6 +793,125 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(targetId).classList.add('active');
         });
     });
+    
+    // Function to escape HTML to prevent XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Function to update count badges
+    function updateCount(elementId, count) {
+        const countElement = document.getElementById(elementId);
+        if (countElement) {
+            countElement.textContent = `(Showing ${count})`;
+        }
+    }
+    
+    // Load More Top Tweets
+    const loadMoreTweets = document.getElementById('load-more-tweets');
+    if (loadMoreTweets) {
+        const tweetsPageSize = 20;
+        loadMoreTweets.addEventListener('click', async function() {
+            const offset = parseInt(this.dataset.offset);
+            const tbody = document.getElementById('top-tweets-body');
+            
+            this.disabled = true;
+            this.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}`);
+                const data = await response.json();
+                
+                if (data.tweets && data.tweets.length > 0) {
+                    data.tweets.forEach(tweet => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${escapeHtml(tweet.id_str)}</td>
+                            <td class="text-cell">${escapeHtml(tweet.text)}</td>
+                            <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
+                            <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
+                            <td>${escapeHtml(tweet.date)}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Update count
+                    const currentCount = tbody.querySelectorAll('tr').length;
+                    updateCount('top-tweets-count', currentCount);
+                    
+                    this.dataset.offset = offset + tweetsPageSize;
+                    this.disabled = false;
+                    this.textContent = 'Load More...';
+                    
+                    if (!data.has_more) {
+                        this.disabled = true;
+                        this.textContent = `All ${data.total} tweets loaded`;
+                    }
+                } else {
+                    this.disabled = true;
+                    this.textContent = 'No more tweets';
+                }
+            } catch (err) {
+                console.error('Error loading tweets:', err);
+                this.disabled = false;
+                this.textContent = 'Error loading tweets. Try again?';
+            }
+        });
+    }
+    
+    // Load More Data Preview
+    const loadMoreData = document.getElementById('load-more-data');
+    if (loadMoreData) {
+        const dataPageSize = 100;
+        loadMoreData.addEventListener('click', async function() {
+            const offset = parseInt(this.dataset.offset);
+            const tbody = document.getElementById('data-preview-body');
+            
+            this.disabled = true;
+            this.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch(`/api/data-preview?offset=${offset}&limit=${dataPageSize}`);
+                const data = await response.json();
+                
+                if (data.records && data.records.length > 0) {
+                    data.records.forEach(record => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${escapeHtml(record.record_type)}</td>
+                            <td>${escapeHtml(record.id_str)}</td>
+                            <td>${escapeHtml(record.date)}</td>
+                            <td class="text-cell">${escapeHtml(record.text)}</td>
+                            <td>${escapeHtml(record.source)}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Update count
+                    const currentCount = tbody.querySelectorAll('tr').length;
+                    updateCount('data-preview-count', currentCount);
+                    
+                    this.dataset.offset = offset + dataPageSize;
+                    this.disabled = false;
+                    this.textContent = 'Load More...';
+                    
+                    if (!data.has_more) {
+                        this.disabled = true;
+                        this.textContent = `All ${data.total} records loaded`;
+                    }
+                } else {
+                    this.disabled = true;
+                    this.textContent = 'No more records';
+                }
+            } catch (err) {
+                console.error('Error loading data:', err);
+                this.disabled = false;
+                this.textContent = 'Error loading data. Try again?';
+            }
+        });
+    }
 });
 </script>
 """
@@ -682,10 +980,10 @@ def upload():
         # Store in session
         session_id = secrets.token_hex(16)
         session["data_id"] = session_id
-        session_data[session_id] = {
+        save_session_data(session_id, {
             "df": df,
             "timestamp": datetime.now().isoformat(),
-        }
+        })
 
         flash(f"Successfully processed {len(df):,} records from {len(file_data)} file(s)", "success")
         return redirect(url_for("results"))
@@ -699,11 +997,15 @@ def upload():
 def results():
     """Render analysis results."""
     data_id = session.get("data_id")
-    if not data_id or data_id not in session_data:
+    if not data_id:
         flash("No data available. Please upload files first.", "info")
         return redirect(url_for("index"))
+    
+    data = load_session_data(data_id)
+    if not data:
+        flash("Session expired. Please upload files again.", "info")
+        return redirect(url_for("index"))
 
-    data = session_data[data_id]
     df = data["df"]
 
     # Generate summary
@@ -775,6 +1077,101 @@ def results():
         ),
         scripts=RESULTS_SCRIPTS,
     )
+
+
+@app.route("/api/top-tweets")
+def api_top_tweets():
+    """API endpoint for paginated top tweets."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
+    df = data["df"]
+    
+    # Get pagination parameters with validation
+    offset = max(0, request.args.get("offset", 0, type=int))
+    limit = max(1, min(1000, request.args.get("limit", 20, type=int)))  # Cap at 1000
+    
+    # Get top tweets
+    top_tweets = []
+    if "favorite_count" in df.columns and df["favorite_count"].notna().any():
+        tweets_only = df[df["record_type"] == "tweet"] if "record_type" in df.columns else df
+        all_top = tweets_only.nlargest(min(len(tweets_only), 1000), "favorite_count")  # Limit to top 1000
+        
+        # Paginate
+        paginated = all_top.iloc[offset:offset + limit]
+        
+        for _, row in paginated.iterrows():
+            date_str = (
+                row["created_at"].strftime("%Y-%m-%d %H:%M")
+                if pd.notna(row.get("created_at"))
+                else "N/A"
+            )
+            top_tweets.append(
+                {
+                    "id_str": row.get("id_str", ""),
+                    "text": row.get("text", ""),
+                    "favorite_count": row.get("favorite_count", 0),
+                    "retweet_count": row.get("retweet_count", 0) or 0,
+                    "date": date_str,
+                }
+            )
+        
+        return jsonify({
+            "tweets": top_tweets,
+            "has_more": offset + limit < len(all_top),
+            "total": len(all_top),
+        })
+    
+    return jsonify({"tweets": [], "has_more": False, "total": 0})
+
+
+@app.route("/api/data-preview")
+def api_data_preview():
+    """API endpoint for paginated data preview."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
+    df = data["df"]
+    
+    # Get pagination parameters with validation
+    offset = max(0, request.args.get("offset", 0, type=int))
+    limit = max(1, min(1000, request.args.get("limit", 100, type=int)))  # Cap at 1000
+    
+    # Get preview data
+    preview_data = []
+    paginated = df.iloc[offset:offset + limit]
+    
+    for _, row in paginated.iterrows():
+        date_str = (
+            row["created_at"].strftime("%Y-%m-%d %H:%M")
+            if pd.notna(row.get("created_at"))
+            else "N/A"
+        )
+        preview_data.append(
+            {
+                "record_type": row.get("record_type", ""),
+                "id_str": row.get("id_str", ""),
+                "date": date_str,
+                "text": row.get("text", "") or "",
+                "source": row.get("source", "") or "",
+            }
+        )
+    
+    return jsonify({
+        "records": preview_data,
+        "has_more": offset + limit < len(df),
+        "total": len(df),
+    })
 
 
 @app.route("/health")
