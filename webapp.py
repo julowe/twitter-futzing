@@ -9,6 +9,7 @@ import os
 import pickle
 import re
 import secrets
+import shutil
 import tempfile
 import warnings
 import zipfile
@@ -31,6 +32,7 @@ from werkzeug.utils import secure_filename
 
 import pandas as pd
 
+from cli import generate_html_report, generate_markdown_report
 from twitter_analyzer.core import (
     parse_twitter_export_bytes,
     normalize_items,
@@ -1239,20 +1241,17 @@ def download():
             # Clean up temporary directory
             if temp_dir:
                 try:
-                    import shutil
                     shutil.rmtree(temp_dir)
                 except Exception:
                     pass
         
         # Generate Markdown report (reusing CLI function)
-        from cli import generate_markdown_report
         md_report = generate_markdown_report(df, summary_text, 
                                              [os.path.basename(f) for f in image_files], 
                                              timestamp)
         zip_file.writestr(f"report_{timestamp}.md", md_report)
         
         # Generate HTML report (reusing CLI function)
-        from cli import generate_html_report
         charts_html = []
         for name, fig in charts.items():
             if fig is not None:
