@@ -8,8 +8,17 @@ Since automated Docker tests may fail due to network/environment issues, here's 
 # 1. Build the image
 docker build -t twitter-analyzer-test .
 
-# 2. Run the container
-docker run -d -p 8765:8080 --name test-container twitter-analyzer-test
+# 2. Run the container with tmpfs mount (recommended for Chromium)
+docker run -d -p 8765:8080 \
+  --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+  --name test-container \
+  twitter-analyzer-test
+
+# Alternative: Run with increased shared memory
+docker run -d -p 8765:8080 \
+  --shm-size=512m \
+  --name test-container \
+  twitter-analyzer-test
 
 # 3. Wait a few seconds, then check if it's running
 docker ps | grep test-container
@@ -82,6 +91,23 @@ docker exec test-container python3 -c "import kaleido; print(kaleido.__version__
 ```
 
 ## Common Issues and Solutions
+
+### Issue: "chrome_crashpad_handler: --database is required" or "Connection reset by peer"
+**Solution**: Chromium needs adequate shared memory for headless operation
+- **Option 1 (Recommended)**: Use tmpfs mount
+  ```bash
+  docker run -d -p 8765:8080 \
+    --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+    --name test-container \
+    twitter-analyzer-test
+  ```
+- **Option 2**: Increase shared memory size
+  ```bash
+  docker run -d -p 8765:8080 \
+    --shm-size=512m \
+    --name test-container \
+    twitter-analyzer-test
+  ```
 
 ### Issue: "Kaleido requires Google Chrome to be installed"
 **Solution**: Chromium not installed or `CHROME_PATH` not set

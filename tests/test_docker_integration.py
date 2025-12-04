@@ -84,6 +84,7 @@ def main():
         result = run_command(
             f"docker run -d --name {container_name} "
             f"-p {test_port}:8080 "
+            f"--tmpfs /tmp:rw,noexec,nosuid,size=512m "
             f"-e SECRET_KEY=test-secret-key-for-docker-testing "
             f"{image_name}"
         )
