@@ -1237,6 +1237,7 @@ def download():
         except Exception as e:
             # Log the error but continue - we'll still have the HTML report with interactive charts
             print(f"Warning: Could not generate PNG images: {e}")
+            image_files = []  # Reset to empty list on error
         finally:
             # Clean up temporary directory
             if temp_dir:
@@ -1246,9 +1247,9 @@ def download():
                     pass
         
         # Generate Markdown report (reusing CLI function)
-        md_report = generate_markdown_report(df, summary_text, 
-                                             [os.path.basename(f) for f in image_files], 
-                                             timestamp)
+        # Filter to ensure only valid string paths are used for basenames
+        image_basenames = [os.path.basename(f) for f in image_files if isinstance(f, str)]
+        md_report = generate_markdown_report(df, summary_text, image_basenames, timestamp)
         zip_file.writestr(f"report_{timestamp}.md", md_report)
         
         # Generate HTML report (reusing CLI function)
