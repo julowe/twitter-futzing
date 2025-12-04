@@ -1,6 +1,8 @@
 # Twitter Archive Analyzer
 
-A comprehensive tool for analyzing and visualizing Twitter/X archive exports. Supports command-line interface for batch processing and a web application for interactive analysis.
+A comprehensive tool for analyzing and visualizing Twitter/X archive exports.
+Supports command-line interface for batch processing and a web application for
+interactive analysis.
 
 ## Features
 
@@ -15,14 +17,30 @@ A comprehensive tool for analyzing and visualizing Twitter/X archive exports. Su
 
 ### Installation
 
+Run the below commands if you intend to use the Command Line Interface (CLI) or
+run the web application locally.
+You can skip this section if you plan to use the Docker image.
+
 ```bash
 # Clone the repository
 git clone https://github.com/julowe/twitter-futzing.git
 cd twitter-futzing
 
+# Create and Activate Virtual Environment
+python3 -m venv venv
+source venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+**Note on Image Generation:**
+
+- The CLI generates PNG images of visualizations using [kaleido](https://github.com/plotly/Kaleido)
+- Kaleido 1.0.0+ requires Chrome/Chromium to be installed.
+  If you do not have it installed, or if the version installed does not work
+  with Kaleido then this script will download its own copy into the venv
+- Interactive charts are always available in the generated HTML report
 
 ### Command Line Usage
 
@@ -44,6 +62,7 @@ python cli.py -v tweets.js
 ```
 
 The CLI will generate in the `exports/` directory:
+
 - CSV files for all records and per-type breakdowns
 - PNG images of visualizations
 - HTML report with interactive charts
@@ -61,13 +80,17 @@ export SECRET_KEY="your-secret-key-here"
 gunicorn --bind 0.0.0.0:5000 --workers 2 webapp:app
 ```
 
-Then open http://localhost:5000 in your browser to upload files and view interactive results.
+Then open [http://localhost:5000] in your browser to upload files
+and view interactive results.
 
 **Production Notes:**
+
 - Always set the `SECRET_KEY` environment variable when running with multiple workers
-- Without SECRET_KEY, a persistent key file is created automatically in the system temp directory
+- Without SECRET_KEY, a persistent key file is created automatically in the
+  system temp directory
 - Use `--workers` appropriate for your server (typically 2-4 workers)
-- Session data is stored in the system temp directory (`/tmp/` on Linux) under `twitter_analyzer_sessions/` and shared across workers
+- Session data is stored in the system temp directory (`/tmp/` on Linux) under
+  `twitter_analyzer_sessions/` and shared across workers
 
 ### Docker
 
@@ -124,6 +147,10 @@ twitter-futzing/
 ## Development
 
 ```bash
+# Create and Activate Virtual Environment
+python3 -m venv venv
+source venv/bin/activate
+
 # Install development dependencies
 pip install -r requirements.txt
 
@@ -136,13 +163,14 @@ DEBUG=true python webapp.py
 
 ## CI/CD
 
-This project uses GitHub Actions to automatically build and publish Docker images to the GitHub Container Registry (ghcr.io).
+This project uses GitHub Actions to automatically build and publish Docker
+images to the GitHub Container Registry (ghcr.io).
 
 ### Automated Docker Builds
 
 - **Trigger**: Automatic builds occur on every push to the `main` branch
 - **Registry**: Images are published to `ghcr.io/julowe/twitter-futzing`
-- **Tags**: 
+- **Tags**:
   - `latest` - Most recent build from main branch
   - `main-<sha>` - Specific commit SHA from main branch
   - `<branch>` - Branch name for non-main branches

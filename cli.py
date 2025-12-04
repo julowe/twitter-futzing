@@ -383,9 +383,15 @@ Examples:
             image_files = save_charts_as_images(charts, str(output_dir), format="png")
             for img in image_files:
                 print(f"  - {img}")
+        except ImportError as e:
+            print(f"  Warning: {e}", file=sys.stderr)
+            print("  Skipping image generation. Interactive charts will still be available in the HTML report.", file=sys.stderr)
         except Exception as e:
-            print(f"  Warning: Could not save images: {e}", file=sys.stderr)
-            print("  (You may need to install kaleido: pip install kaleido)", file=sys.stderr)
+            print(f"  Warning: Failed to save images: {e}", file=sys.stderr)
+            print("  Skipping image generation. Interactive charts will still be available in the HTML report.", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
 
     # Generate reports
     print("\nGenerating reports...")
