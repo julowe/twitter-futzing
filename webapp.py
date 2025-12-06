@@ -680,7 +680,40 @@ RESULTS_CONTENT = """
     <h2>Analysis Results</h2>
     <a href="{{ url_for('index') }}" class="btn btn-secondary" style="margin-bottom: 20px;">← Upload More Files</a>
     
-    <div class="stats-grid">
+    <div class="filter-section" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3 style="margin-top: 0; margin-bottom: 15px;">Filters</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div>
+                <label for="filter-datetime-after" style="display: block; margin-bottom: 5px; font-weight: 500;">Date After:</label>
+                <input type="datetime-local" id="filter-datetime-after" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Select both date and time</small>
+            </div>
+            <div>
+                <label for="filter-datetime-before" style="display: block; margin-bottom: 5px; font-weight: 500;">Date Before:</label>
+                <input type="datetime-local" id="filter-datetime-before" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Select both date and time</small>
+            </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div>
+                <label for="filter-and-words" style="display: block; margin-bottom: 5px; font-weight: 500;">AND Words (all must be present):</label>
+                <input type="text" id="filter-and-words" class="filter-input" placeholder="e.g., blue, green" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Separate multiple words with commas</small>
+            </div>
+            <div>
+                <label for="filter-or-words" style="display: block; margin-bottom: 5px; font-weight: 500;">OR Words (at least one must be present):</label>
+                <input type="text" id="filter-or-words" class="filter-input" placeholder="e.g., red, purple blue" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Separate multiple words with commas</small>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button id="apply-filters" class="btn" style="flex: 0 0 auto;">Apply Filters</button>
+            <button id="clear-filters" class="btn btn-secondary" style="flex: 0 0 auto;">Clear Filters</button>
+            <div id="filter-status" style="display: flex; align-items: center; margin-left: 15px; color: #666; font-size: 14px;"></div>
+        </div>
+    </div>
+    
+    <div class="stats-grid" id="stats-grid">
         <div class="stat-card">
             <div class="stat-value">{{ total_records | format_number }}</div>
             <div class="stat-label">Total Records</div>
@@ -701,11 +734,11 @@ RESULTS_CONTENT = """
     </div>
     
     <div id="summary" class="tab-content active">
-        <div class="summary-box">{{ summary }}</div>
+        <div class="summary-box" id="summary-box">{{ summary }}</div>
     </div>
     
     <div id="charts" class="tab-content">
-        {{ charts_html | safe }}
+        <div id="charts-container">{{ charts_html | safe }}</div>
     </div>
     
     <div id="top-tweets" class="tab-content">
@@ -809,6 +842,286 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Filter functionality
+    let currentFilters = {
+        datetime_after: null,
+        datetime_before: null,
+        filter_and: null,
+        filter_or: null
+    };
+    
+    function buildFilterParams() {
+        const params = new URLSearchParams();
+        if (currentFilters.datetime_after) {
+            params.append('datetime_after', currentFilters.datetime_after);
+        }
+        if (currentFilters.datetime_before) {
+            params.append('datetime_before', currentFilters.datetime_before);
+        }
+        if (currentFilters.filter_and) {
+            params.append('filter_and', currentFilters.filter_and);
+        }
+        if (currentFilters.filter_or) {
+            params.append('filter_or', currentFilters.filter_or);
+        }
+        return params.toString();
+    }
+    
+    async function applyFilters() {
+        const filterStatus = document.getElementById('filter-status');
+        filterStatus.textContent = 'Applying filters...';
+        filterStatus.style.color = '#666';
+        
+        // Get filter values
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const datetimeAfter = datetimeAfterInput.value;
+        const datetimeBefore = datetimeBeforeInput.value;
+        const andWords = document.getElementById('filter-and-words').value;
+        const orWords = document.getElementById('filter-or-words').value;
+        
+        // Validate datetime inputs
+        // datetime-local input returns empty string if invalid or incomplete
+        // We need to check if the input looks like it has partial data
+        const afterInputRaw = datetimeAfterInput.value;
+        const beforeInputRaw = datetimeBeforeInput.value;
+        
+        // If input appears to have been touched but is invalid/incomplete
+        if (datetimeAfterInput.validity && !datetimeAfterInput.validity.valid && datetimeAfterInput.value === '') {
+            // Check if user might have entered partial data
+            const afterRawValue = datetimeAfterInput.getAttribute('value');
+            if (afterRawValue && afterRawValue !== '') {
+                filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeAfterInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        if (datetimeBeforeInput.validity && !datetimeBeforeInput.validity.valid && datetimeBeforeInput.value === '') {
+            const beforeRawValue = datetimeBeforeInput.getAttribute('value');
+            if (beforeRawValue && beforeRawValue !== '') {
+                filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeBeforeInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        // Additional validation: datetime-local should have format YYYY-MM-DDTHH:MM
+        // If the value is set but doesn't match the expected format, it's incomplete
+        if (afterInputRaw && afterInputRaw.length > 0 && afterInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeAfterInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (beforeInputRaw && beforeInputRaw.length > 0 && beforeInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeBeforeInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        // Reset border colors on successful validation
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
+        
+        // Update current filters
+        currentFilters.datetime_after = datetimeAfter || null;
+        currentFilters.datetime_before = datetimeBefore || null;
+        currentFilters.filter_and = andWords || null;
+        currentFilters.filter_or = orWords || null;
+        
+        try {
+            // Fetch filtered data
+            const filterParams = buildFilterParams();
+            const response = await fetch(`/api/filter-data?${filterParams}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                filterStatus.textContent = `Error: ${data.error}`;
+                filterStatus.style.color = '#dc2626';
+                return;
+            }
+            
+            // Update stats
+            updateStats(data.stats);
+            
+            // Update summary
+            document.getElementById('summary-box').textContent = data.summary;
+            
+            // Update charts
+            updateCharts(data.charts_html);
+            
+            // Update top tweets
+            updateTopTweets(data.top_tweets);
+            
+            // Update data preview
+            updateDataPreview(data.preview_data);
+            
+            // Update status
+            const hasFilters = datetimeAfter || datetimeBefore || andWords || orWords;
+            if (hasFilters) {
+                filterStatus.textContent = `Showing ${data.stats.total_records.toLocaleString()} of ${data.stats.unfiltered_total.toLocaleString()} records`;
+                filterStatus.style.color = '#1da1f2';
+            } else {
+                filterStatus.textContent = '';
+            }
+        } catch (err) {
+            console.error('Error applying filters:', err);
+            filterStatus.textContent = 'Error applying filters';
+            filterStatus.style.color = '#dc2626';
+        }
+    }
+    
+    function updateStats(stats) {
+        const statsGrid = document.getElementById('stats-grid');
+        let html = `
+            <div class="stat-card">
+                <div class="stat-value">${stats.total_records.toLocaleString()}</div>
+                <div class="stat-label">Total Records</div>
+            </div>
+        `;
+        
+        for (const [type, count] of Object.entries(stats.type_counts)) {
+            html += `
+                <div class="stat-card">
+                    <div class="stat-value">${count.toLocaleString()}</div>
+                    <div class="stat-label">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+                </div>
+            `;
+        }
+        
+        statsGrid.innerHTML = html;
+    }
+    
+    function updateCharts(chartsHtml) {
+        const chartsContainer = document.getElementById('charts-container');
+        
+        // Clear existing charts
+        chartsContainer.innerHTML = '';
+        
+        if (!chartsHtml) {
+            return;
+        }
+        
+        // Create a temporary container to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = chartsHtml;
+        
+        // Extract and append all chart containers
+        const chartDivs = tempDiv.querySelectorAll('.chart-container');
+        chartDivs.forEach(chartDiv => {
+            chartsContainer.appendChild(chartDiv.cloneNode(true));
+        });
+        
+        // Execute all script tags from the charts HTML
+        const scripts = tempDiv.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            if (oldScript.src) {
+                newScript.src = oldScript.src;
+            } else {
+                newScript.textContent = oldScript.textContent;
+            }
+            document.body.appendChild(newScript);
+            // Remove the script after a short delay to avoid accumulation
+            setTimeout(() => {
+                if (newScript.parentNode) {
+                    newScript.parentNode.removeChild(newScript);
+                }
+            }, 100);
+        });
+    }
+    
+    function updateTopTweets(tweets) {
+        const tbody = document.getElementById('top-tweets-body');
+        const loadMoreBtn = document.getElementById('load-more-tweets');
+        
+        tbody.innerHTML = '';
+        tweets.forEach(tweet => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${escapeHtml(tweet.id_str)}</td>
+                <td class="text-cell">${escapeHtml(tweet.text)}</td>
+                <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
+                <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
+                <td>${escapeHtml(tweet.date)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        updateCount('top-tweets-count', tweets.length);
+        
+        // Reset load more button
+        if (loadMoreBtn) {
+            loadMoreBtn.dataset.offset = '20';
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = 'Load More...';
+        }
+    }
+    
+    function updateDataPreview(records) {
+        const tbody = document.getElementById('data-preview-body');
+        const loadMoreBtn = document.getElementById('load-more-data');
+        
+        tbody.innerHTML = '';
+        records.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${escapeHtml(record.record_type)}</td>
+                <td>${escapeHtml(record.id_str)}</td>
+                <td>${escapeHtml(record.date)}</td>
+                <td class="text-cell">${escapeHtml(record.text)}</td>
+                <td>${escapeHtml(record.source)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        updateCount('data-preview-count', records.length);
+        
+        // Reset load more button
+        if (loadMoreBtn) {
+            loadMoreBtn.dataset.offset = '100';
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = 'Load More...';
+        }
+    }
+    
+    function clearFilters() {
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const filterStatus = document.getElementById('filter-status');
+        
+        datetimeAfterInput.value = '';
+        datetimeBeforeInput.value = '';
+        document.getElementById('filter-and-words').value = '';
+        document.getElementById('filter-or-words').value = '';
+        
+        // Reset border colors
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
+        
+        // Reset status
+        filterStatus.textContent = '';
+        filterStatus.style.color = '#666';
+        
+        currentFilters = {
+            datetime_after: null,
+            datetime_before: null,
+            filter_and: null,
+            filter_or: null
+        };
+        
+        applyFilters();
+    }
+    
+    // Attach event listeners
+    document.getElementById('apply-filters').addEventListener('click', applyFilters);
+    document.getElementById('clear-filters').addEventListener('click', clearFilters);
+    
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
     if (loadMoreTweets) {
@@ -821,7 +1134,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}`);
+                const filterParams = buildFilterParams();
+                const url = `/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.tweets && data.tweets.length > 0) {
@@ -873,7 +1188,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/data-preview?offset=${offset}&limit=${dataPageSize}`);
+                const filterParams = buildFilterParams();
+                const url = `/api/data-preview?offset=${offset}&limit=${dataPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.records && data.records.length > 0) {
@@ -928,6 +1245,52 @@ def format_number(value):
 
 
 app.jinja_env.filters["format_number"] = format_number
+
+
+def parse_filter_params():
+    """Parse filter parameters from request arguments.
+    
+    Returns:
+        Dictionary with filter parameters ready for filter_dataframe function.
+    """
+    import pytz
+    
+    filters = {}
+    
+    # Parse datetime filters
+    datetime_after_str = request.args.get("datetime_after")
+    if datetime_after_str:
+        try:
+            # Parse the datetime string
+            dt = pd.to_datetime(datetime_after_str)
+            # Make timezone-aware if not already
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(pytz.UTC)
+            filters["datetime_after"] = dt.to_pydatetime()
+        except Exception:
+            pass  # Ignore invalid datetime
+    
+    datetime_before_str = request.args.get("datetime_before")
+    if datetime_before_str:
+        try:
+            dt = pd.to_datetime(datetime_before_str)
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(pytz.UTC)
+            filters["datetime_before"] = dt.to_pydatetime()
+        except Exception:
+            pass
+    
+    # Parse text filters
+    filter_and_str = request.args.get("filter_and")
+    if filter_and_str:
+        # Split by comma and strip whitespace
+        filters["filter_and"] = [w.strip() for w in filter_and_str.split(",") if w.strip()]
+    
+    filter_or_str = request.args.get("filter_or")
+    if filter_or_str:
+        filters["filter_or"] = [w.strip() for w in filter_or_str.split(",") if w.strip()]
+    
+    return filters
 
 
 @app.route("/")
@@ -1079,6 +1442,97 @@ def results():
     )
 
 
+@app.route("/api/filter-data")
+def api_filter_data():
+    """API endpoint to get filtered data with all components updated."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
+    original_df = data["df"]
+    unfiltered_total = len(original_df)
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
+    
+    # Generate summary
+    summary_text = summarize(df)
+    
+    # Generate charts
+    charts = generate_all_charts(df)
+    charts_html = ""
+    first_chart = True
+    for name, fig in charts.items():
+        if fig is not None:
+            chart_html = get_chart_html(fig, include_plotlyjs=first_chart)
+            charts_html += f'<div class="chart-container">{chart_html}</div>'
+            first_chart = False
+    
+    # Get type counts
+    type_counts = df["record_type"].value_counts().to_dict() if "record_type" in df.columns else {}
+    
+    # Get top tweets
+    top_tweets = []
+    if "favorite_count" in df.columns and df["favorite_count"].notna().any():
+        tweets_only = df[df["record_type"] == "tweet"] if "record_type" in df.columns else df
+        top = tweets_only.nlargest(20, "favorite_count")
+        for _, row in top.iterrows():
+            date_str = (
+                row["created_at"].strftime("%Y-%m-%d %H:%M")
+                if pd.notna(row.get("created_at"))
+                else "N/A"
+            )
+            top_tweets.append(
+                {
+                    "id_str": row.get("id_str", ""),
+                    "text": row.get("text", ""),
+                    "favorite_count": row.get("favorite_count", 0),
+                    "retweet_count": row.get("retweet_count", 0) or 0,
+                    "date": date_str,
+                }
+            )
+    
+    # Get preview data
+    preview_data = []
+    for _, row in df.head(100).iterrows():
+        date_str = (
+            row["created_at"].strftime("%Y-%m-%d %H:%M")
+            if pd.notna(row.get("created_at"))
+            else "N/A"
+        )
+        preview_data.append(
+            {
+                "record_type": row.get("record_type", ""),
+                "id_str": row.get("id_str", ""),
+                "date": date_str,
+                "text": row.get("text", "") or "",
+                "source": row.get("source", "") or "",
+            }
+        )
+    
+    return jsonify({
+        "stats": {
+            "total_records": len(df),
+            "unfiltered_total": unfiltered_total,
+            "type_counts": type_counts,
+        },
+        "summary": summary_text,
+        "charts_html": charts_html,
+        "top_tweets": top_tweets,
+        "preview_data": preview_data,
+    })
+
+
 @app.route("/api/top-tweets")
 def api_top_tweets():
     """API endpoint for paginated top tweets."""
@@ -1090,7 +1544,16 @@ def api_top_tweets():
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
-    df = data["df"]
+    original_df = data["df"]
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
     
     # Get pagination parameters with validation
     offset = max(0, request.args.get("offset", 0, type=int))
@@ -1141,7 +1604,16 @@ def api_data_preview():
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
-    df = data["df"]
+    original_df = data["df"]
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
     
     # Get pagination parameters with validation
     offset = max(0, request.args.get("offset", 0, type=int))
