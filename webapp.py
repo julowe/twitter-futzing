@@ -241,14 +241,29 @@ BASE_TEMPLATE = """
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
+        header .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
         header h1 {
             margin: 0;
             color: #1da1f2;
             font-size: 1.8em;
+            flex: 1;
+        }
+        header .header-button {
+            flex-shrink: 0;
         }
         header p {
             margin: 10px 0 0;
             color: #666;
+        }
+        header .header-stats {
+            margin: 10px 0 0;
+            color: #333;
+            font-size: 0.95em;
         }
         .card {
             background: rgba(255,255,255,0.95);
@@ -493,6 +508,48 @@ BASE_TEMPLATE = """
         .tab-content.active {
             display: block;
         }
+        .collapsible-section {
+            margin-bottom: 20px;
+        }
+        .collapsible-header {
+            background: #f8f9fa;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: background 0.3s ease;
+        }
+        .collapsible-header:hover {
+            background: #e9ecef;
+        }
+        .collapsible-header .title {
+            font-weight: 500;
+            color: #333;
+        }
+        .collapsible-header .toggle-icon {
+            transition: transform 0.3s ease;
+            font-size: 1.2em;
+        }
+        .collapsible-header.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .collapsible-content.expanded {
+            max-height: 1000px;
+        }
+        .collapsible-content-inner {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+            margin-top: -8px;
+        }
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -509,8 +566,20 @@ BASE_TEMPLATE = """
 <body>
     <div class="container">
         <header>
-            <h1>🐦 Twitter Archive Analyzer</h1>
-            <p>Upload your Twitter archive files (.js or .json) for analysis and visualization</p>
+            <div class="header-content">
+                <h1>{{ header_title | default('🐦 Twitter Archive Analyzer') }}</h1>
+                {% if header_button %}
+                <div class="header-button">
+                    {{ header_button | safe }}
+                </div>
+                {% endif %}
+            </div>
+            {% if header_description %}
+            <p>{{ header_description }}</p>
+            {% endif %}
+            {% if header_stats %}
+            <div class="header-stats">{{ header_stats | safe }}</div>
+            {% endif %}
         </header>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -677,53 +746,44 @@ document.addEventListener('DOMContentLoaded', function() {
 
 RESULTS_CONTENT = """
 <div class="card">
-    <h2>Analysis Results</h2>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary" style="margin-bottom: 20px;">← Upload More Files</a>
-    
-    <div class="filter-section" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-        <h3 style="margin-top: 0; margin-bottom: 15px;">Filters</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-            <div>
-                <label for="filter-datetime-after" style="display: block; margin-bottom: 5px; font-weight: 500;">Date After:</label>
-                <input type="datetime-local" id="filter-datetime-after" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Select both date and time</small>
+    <div class="collapsible-section">
+        <div class="collapsible-header" id="filters-toggle">
+            <span class="title">Filters</span>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="collapsible-content" id="filters-content">
+            <div class="collapsible-content-inner">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-datetime-after" style="display: block; margin-bottom: 5px; font-weight: 500;">Date After:</label>
+                        <input type="datetime-local" id="filter-datetime-after" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Select both date and time</small>
+                    </div>
+                    <div>
+                        <label for="filter-datetime-before" style="display: block; margin-bottom: 5px; font-weight: 500;">Date Before:</label>
+                        <input type="datetime-local" id="filter-datetime-before" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Select both date and time</small>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-and-words" style="display: block; margin-bottom: 5px; font-weight: 500;">AND Words (all must be present):</label>
+                        <input type="text" id="filter-and-words" class="filter-input" placeholder="e.g., blue, green" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Separate multiple words with commas</small>
+                    </div>
+                    <div>
+                        <label for="filter-or-words" style="display: block; margin-bottom: 5px; font-weight: 500;">OR Words (at least one must be present):</label>
+                        <input type="text" id="filter-or-words" class="filter-input" placeholder="e.g., red, purple blue" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Separate multiple words with commas</small>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="apply-filters" class="btn" style="flex: 0 0 auto;">Apply Filters</button>
+                    <button id="clear-filters" class="btn btn-secondary" style="flex: 0 0 auto;">Clear Filters</button>
+                    <div id="filter-status" style="display: flex; align-items: center; margin-left: 15px; color: #666; font-size: 14px;"></div>
+                </div>
             </div>
-            <div>
-                <label for="filter-datetime-before" style="display: block; margin-bottom: 5px; font-weight: 500;">Date Before:</label>
-                <input type="datetime-local" id="filter-datetime-before" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Select both date and time</small>
-            </div>
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-            <div>
-                <label for="filter-and-words" style="display: block; margin-bottom: 5px; font-weight: 500;">AND Words (all must be present):</label>
-                <input type="text" id="filter-and-words" class="filter-input" placeholder="e.g., blue, green" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Separate multiple words with commas</small>
-            </div>
-            <div>
-                <label for="filter-or-words" style="display: block; margin-bottom: 5px; font-weight: 500;">OR Words (at least one must be present):</label>
-                <input type="text" id="filter-or-words" class="filter-input" placeholder="e.g., red, purple blue" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                <small style="color: #666;">Separate multiple words with commas</small>
-            </div>
-        </div>
-        <div style="display: flex; gap: 10px;">
-            <button id="apply-filters" class="btn" style="flex: 0 0 auto;">Apply Filters</button>
-            <button id="clear-filters" class="btn btn-secondary" style="flex: 0 0 auto;">Clear Filters</button>
-            <div id="filter-status" style="display: flex; align-items: center; margin-left: 15px; color: #666; font-size: 14px;"></div>
-        </div>
-    </div>
-    
-    <div class="stats-grid" id="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ total_records | format_number }}</div>
-            <div class="stat-label">Total Records</div>
-        </div>
-        {% for type, count in type_counts.items() %}
-        <div class="stat-card">
-            <div class="stat-value">{{ count | format_number }}</div>
-            <div class="stat-label">{{ type | title }}</div>
-        </div>
-        {% endfor %}
     </div>
     
     <div class="tabs">
@@ -826,6 +886,17 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(targetId).classList.add('active');
         });
     });
+    
+    // Collapsible filter section
+    const filtersToggle = document.getElementById('filters-toggle');
+    const filtersContent = document.getElementById('filters-content');
+    
+    if (filtersToggle && filtersContent) {
+        filtersToggle.addEventListener('click', function() {
+            this.classList.toggle('expanded');
+            filtersContent.classList.toggle('expanded');
+        });
+    }
     
     // Function to escape HTML to prevent XSS
     function escapeHtml(text) {
@@ -977,24 +1048,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateStats(stats) {
-        const statsGrid = document.getElementById('stats-grid');
-        let html = `
-            <div class="stat-card">
-                <div class="stat-value">${stats.total_records.toLocaleString()}</div>
-                <div class="stat-label">Total Records</div>
-            </div>
-        `;
-        
-        for (const [type, count] of Object.entries(stats.type_counts)) {
-            html += `
-                <div class="stat-card">
-                    <div class="stat-value">${count.toLocaleString()}</div>
-                    <div class="stat-label">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
-                </div>
-            `;
+        // Update header stats text
+        const headerStats = document.querySelector('header .header-stats');
+        if (headerStats) {
+            let statsParts = [`Total Records: ${stats.total_records.toLocaleString()}`];
+            for (const [type, count] of Object.entries(stats.type_counts)) {
+                statsParts.push(`${type.charAt(0).toUpperCase() + type.slice(1)}: ${count.toLocaleString()}`);
+            }
+            headerStats.textContent = statsParts.join(' | ');
         }
-        
-        statsGrid.innerHTML = html;
     }
     
     function updateCharts(chartsHtml) {
@@ -1299,6 +1361,8 @@ def index():
     return render_template_string(
         BASE_TEMPLATE,
         title="Upload",
+        header_title="🐦 Twitter Archive Analyzer",
+        header_description="Upload your Twitter archive files (.js or .json) for analysis and visualization",
         content=render_template_string(UPLOAD_CONTENT),
         scripts=UPLOAD_SCRIPTS,
     )
@@ -1426,13 +1490,23 @@ def results():
             }
         )
 
+    # Build header stats text
+    stats_parts = [f"Total Records: {format_number(len(df))}"]
+    for record_type, count in type_counts.items():
+        stats_parts.append(f"{record_type.title()}: {format_number(count)}")
+    header_stats = " | ".join(stats_parts)
+    
+    # Build header button
+    header_button = '<a href="//" class="btn btn-secondary">← Return to File Upload</a>'.replace('//', url_for('index'))
+    
     return render_template_string(
         BASE_TEMPLATE,
         title="Results",
+        header_title="🐦 Twitter Archive Analyzer - Results",
+        header_button=header_button,
+        header_stats=header_stats,
         content=render_template_string(
             RESULTS_CONTENT,
-            total_records=len(df),
-            type_counts=type_counts,
             summary=summary_text,
             charts_html=charts_html,
             top_tweets=top_tweets,
