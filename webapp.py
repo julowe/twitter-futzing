@@ -25,6 +25,7 @@ from flask import (
     url_for,
     jsonify,
 )
+from markupsafe import Markup
 from werkzeug.utils import secure_filename
 
 import pandas as pd
@@ -1498,7 +1499,7 @@ def results():
     header_stats = " | ".join(stats_parts)
     
     # Build header button
-    header_button = f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>'
+    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>')
     
     return render_template_string(
         BASE_TEMPLATE,
