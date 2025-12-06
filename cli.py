@@ -297,6 +297,8 @@ Examples:
   %(prog)s tweets.js
   %(prog)s tweets.js deleted-tweets.js note-tweets.js
   %(prog)s --output-dir ./my_exports tweets.js
+  %(prog)s --filter-and blue --filter-and green --filter-or red tweets.js
+  %(prog)s --filter-datetime-after "2023-01-01T00:00" tweets.js
         """,
     )
     parser.add_argument(
@@ -320,6 +322,32 @@ Examples:
         "--verbose",
         action="store_true",
         help="Print verbose output",
+    )
+    parser.add_argument(
+        "--filter-and",
+        action="append",
+        dest="filter_and",
+        metavar="WORD",
+        help="Filter tweets containing this word (all --filter-and words must be present). Can be specified multiple times.",
+    )
+    parser.add_argument(
+        "--filter-or",
+        action="append",
+        dest="filter_or",
+        metavar="WORD",
+        help="Filter tweets containing this word (at least one --filter-or word must be present). Can be specified multiple times.",
+    )
+    parser.add_argument(
+        "--filter-datetime-after",
+        dest="datetime_after",
+        metavar="DATETIME",
+        help='Filter tweets created on or after this datetime (ISO format without seconds, e.g., "2023-01-01T12:30"). If no timezone specified, local timezone is used.',
+    )
+    parser.add_argument(
+        "--filter-datetime-before",
+        dest="datetime_before",
+        metavar="DATETIME",
+        help='Filter tweets created on or before this datetime (ISO format without seconds, e.g., "2023-12-31T23:59"). If no timezone specified, local timezone is used.',
     )
 
     args = parser.parse_args()
@@ -346,6 +374,68 @@ Examples:
         sys.exit(1)
 
     print(f"Processed {len(df):,} records from {len(files)} file(s)")
+
+    # Apply filters
+    filter_applied = False
+    datetime_after = None
+    datetime_before = None
+
+    if args.datetime_after:
+        try:
+            # Parse datetime and make timezone-aware
+            dt = pd.to_datetime(args.datetime_after)
+            # If no timezone info, use local timezone
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(None).tz_localize(datetime.now().astimezone().tzinfo)
+            datetime_after = dt.to_pydatetime()
+            filter_applied = True
+        except Exception as e:
+            print(f"Error parsing --filter-datetime-after: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if args.datetime_before:
+        try:
+            # Parse datetime and make timezone-aware
+            dt = pd.to_datetime(args.datetime_before)
+            # If no timezone info, use local timezone
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(None).tz_localize(datetime.now().astimezone().tzinfo)
+            datetime_before = dt.to_pydatetime()
+            filter_applied = True
+        except Exception as e:
+            print(f"Error parsing --filter-datetime-before: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if args.filter_and or args.filter_or:
+        filter_applied = True
+
+    if filter_applied:
+        from twitter_analyzer.core import filter_dataframe
+        
+        original_count = len(df)
+        df = filter_dataframe(
+            df,
+            filter_and=args.filter_and,
+            filter_or=args.filter_or,
+            datetime_after=datetime_after,
+            datetime_before=datetime_before,
+        )
+        
+        if df.empty:
+            print("Error: No records match the specified filters.", file=sys.stderr)
+            sys.exit(1)
+        
+        print(f"Applied filters: {len(df):,} of {original_count:,} records match")
+        
+        if args.verbose:
+            if args.filter_and:
+                print(f"  - AND filter: {', '.join(args.filter_and)}")
+            if args.filter_or:
+                print(f"  - OR filter: {', '.join(args.filter_or)}")
+            if datetime_after:
+                print(f"  - After: {datetime_after}")
+            if datetime_before:
+                print(f"  - Before: {datetime_before}")
 
     # Generate summary
     summary = summarize(df)

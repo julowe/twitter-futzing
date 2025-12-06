@@ -11,7 +11,7 @@ import os
 import re
 import textwrap
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import chardet
@@ -379,6 +379,79 @@ def summarize(df: pd.DataFrame) -> str:
             f"Retweets: mean {df['retweet_count'].mean():.2f}, max {df['retweet_count'].max()}"
         )
     return "\n".join(lines)
+
+
+def filter_dataframe(
+    df: pd.DataFrame,
+    filter_and: Optional[List[str]] = None,
+    filter_or: Optional[List[str]] = None,
+    datetime_after: Optional[datetime] = None,
+    datetime_before: Optional[datetime] = None,
+) -> pd.DataFrame:
+    """Filter DataFrame based on text and datetime criteria.
+
+    Args:
+        df: DataFrame to filter.
+        filter_and: List of words that must ALL be present in the text (case-insensitive).
+        filter_or: List of words where AT LEAST ONE must be present in the text (case-insensitive).
+        datetime_after: Only include records created on or after this datetime.
+        datetime_before: Only include records created on or before this datetime.
+
+    Returns:
+        Filtered DataFrame.
+
+    Examples:
+        # Filter for tweets containing both "blue" AND "green", OR "red", OR "purple blue"
+        filter_dataframe(df, filter_and=["blue", "green"], filter_or=["red", "purple blue"])
+        
+        # Filter for tweets after a specific date
+        filter_dataframe(df, datetime_after=datetime(2023, 1, 1, tzinfo=timezone.utc))
+    """
+    if df.empty:
+        return df
+
+    filtered_df = df.copy()
+
+    # Apply datetime filters
+    if datetime_after is not None and "created_at" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["created_at"].notna() & (filtered_df["created_at"] >= datetime_after)
+        ]
+
+    if datetime_before is not None and "created_at" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["created_at"].notna() & (filtered_df["created_at"] <= datetime_before)
+        ]
+
+    # Apply text filters
+    # Logic: (ALL AND words present) OR (at least ONE OR word present)
+    if (filter_and or filter_or) and "text" in filtered_df.columns:
+        # Create a lowercase text column for case-insensitive searching
+        text_lower = filtered_df["text"].fillna("").astype(str).str.lower()
+
+        # Build the combined filter
+        final_mask = pd.Series([False] * len(filtered_df), index=filtered_df.index)
+
+        # AND filter: all words must be present
+        if filter_and:
+            and_mask = pd.Series([True] * len(filtered_df), index=filtered_df.index)
+            for word in filter_and:
+                word_lower = word.lower()
+                and_mask &= text_lower.str.contains(re.escape(word_lower), regex=True)
+            final_mask |= and_mask
+
+        # OR filter: at least one word must be present
+        if filter_or:
+            or_mask = pd.Series([False] * len(filtered_df), index=filtered_df.index)
+            for word in filter_or:
+                word_lower = word.lower()
+                or_mask |= text_lower.str.contains(re.escape(word_lower), regex=True)
+            final_mask |= or_mask
+
+        # If only AND or only OR was specified, use that; otherwise use the combined OR logic
+        filtered_df = filtered_df[final_mask]
+
+    return filtered_df
 
 
 def process_files(
