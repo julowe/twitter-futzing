@@ -25,7 +25,7 @@ from flask import (
     url_for,
     jsonify,
 )
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
 
 import pandas as pd
@@ -1492,11 +1492,11 @@ def results():
             }
         )
 
-    # Build header stats text
-    stats_parts = [f"Total Records: {format_number(len(df))}"]
+    # Build header stats text (escape for safety even though record_type is controlled)
+    stats_parts = [f"Total Records: {escape(format_number(len(df)))}"]
     for record_type, count in type_counts.items():
-        stats_parts.append(f"{record_type.title()}: {format_number(count)}")
-    header_stats = " | ".join(stats_parts)
+        stats_parts.append(f"{escape(record_type.title())}: {escape(format_number(count))}")
+    header_stats = Markup(" | ".join(stats_parts))
     
     # Build header button
     header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>')
