@@ -542,7 +542,8 @@ BASE_TEMPLATE = """
             transition: max-height 0.3s ease;
         }
         .collapsible-content.expanded {
-            max-height: 1000px;
+            max-height: 2000px;
+            overflow: visible;
         }
         .collapsible-content-inner {
             padding: 20px;
@@ -1497,7 +1498,7 @@ def results():
     header_stats = " | ".join(stats_parts)
     
     # Build header button
-    header_button = '<a href="//" class="btn btn-secondary">← Return to File Upload</a>'.replace('//', url_for('index'))
+    header_button = f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>'
     
     return render_template_string(
         BASE_TEMPLATE,
