@@ -946,7 +946,41 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateCharts(chartsHtml) {
         const chartsContainer = document.getElementById('charts-container');
-        chartsContainer.innerHTML = chartsHtml;
+        
+        // Clear existing charts
+        chartsContainer.innerHTML = '';
+        
+        if (!chartsHtml) {
+            return;
+        }
+        
+        // Create a temporary container to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = chartsHtml;
+        
+        // Extract and append all chart containers
+        const chartDivs = tempDiv.querySelectorAll('.chart-container');
+        chartDivs.forEach(chartDiv => {
+            chartsContainer.appendChild(chartDiv.cloneNode(true));
+        });
+        
+        // Execute all script tags from the charts HTML
+        const scripts = tempDiv.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            if (oldScript.src) {
+                newScript.src = oldScript.src;
+            } else {
+                newScript.textContent = oldScript.textContent;
+            }
+            document.body.appendChild(newScript);
+            // Remove the script after a short delay to avoid accumulation
+            setTimeout(() => {
+                if (newScript.parentNode) {
+                    newScript.parentNode.removeChild(newScript);
+                }
+            }, 100);
+        });
     }
     
     function updateTopTweets(tweets) {
