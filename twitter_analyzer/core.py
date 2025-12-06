@@ -437,7 +437,7 @@ def filter_dataframe(
             and_mask = pd.Series([True] * len(filtered_df), index=filtered_df.index)
             for word in filter_and:
                 word_lower = word.lower()
-                and_mask &= text_lower.str.contains(re.escape(word_lower), regex=True)
+                and_mask &= text_lower.str.contains(word_lower, regex=False)
             final_mask |= and_mask
 
         # OR filter: at least one word must be present
@@ -445,7 +445,7 @@ def filter_dataframe(
             or_mask = pd.Series([False] * len(filtered_df), index=filtered_df.index)
             for word in filter_or:
                 word_lower = word.lower()
-                or_mask |= text_lower.str.contains(re.escape(word_lower), regex=True)
+                or_mask |= text_lower.str.contains(word_lower, regex=False)
             final_mask |= or_mask
 
         # If only AND or only OR was specified, use that; otherwise use the combined OR logic

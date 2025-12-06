@@ -386,7 +386,7 @@ Examples:
             dt = pd.to_datetime(args.datetime_after)
             # If no timezone info, use local timezone
             if dt.tzinfo is None:
-                dt = dt.tz_localize(None).tz_localize(datetime.now().astimezone().tzinfo)
+                dt = dt.tz_localize(datetime.now().astimezone().tzinfo)
             datetime_after = dt.to_pydatetime()
             filter_applied = True
         except Exception as e:
@@ -399,7 +399,7 @@ Examples:
             dt = pd.to_datetime(args.datetime_before)
             # If no timezone info, use local timezone
             if dt.tzinfo is None:
-                dt = dt.tz_localize(None).tz_localize(datetime.now().astimezone().tzinfo)
+                dt = dt.tz_localize(datetime.now().astimezone().tzinfo)
             datetime_before = dt.to_pydatetime()
             filter_applied = True
         except Exception as e:

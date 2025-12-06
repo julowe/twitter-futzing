@@ -1154,7 +1154,6 @@ def parse_filter_params():
     Returns:
         Dictionary with filter parameters ready for filter_dataframe function.
     """
-    from twitter_analyzer.core import filter_dataframe
     import pytz
     
     filters = {}
