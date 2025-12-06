@@ -188,6 +188,21 @@ def test_filter_data_session_expired(client):
     assert 'error' in data
 
 
+def test_filter_data_invalid_datetime_format(client, mock_session_data):
+    """Test /api/filter-data with invalid datetime format (handled gracefully)."""
+    with client.session_transaction() as sess:
+        sess['data_id'] = mock_session_data
+    
+    # Invalid datetime format should be handled gracefully
+    # The parse_filter_params function will skip invalid dates
+    response = client.get('/api/filter-data?datetime_after=invalid-date')
+    assert response.status_code == 200
+    
+    data = json.loads(response.data)
+    # Should return all records since invalid date is ignored
+    assert data['stats']['total_records'] == 3
+
+
 def main():
     """Run all tests using pytest."""
     # Run pytest with verbose output

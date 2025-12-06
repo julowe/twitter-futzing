@@ -686,10 +686,12 @@ RESULTS_CONTENT = """
             <div>
                 <label for="filter-datetime-after" style="display: block; margin-bottom: 5px; font-weight: 500;">Date After:</label>
                 <input type="datetime-local" id="filter-datetime-after" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Select both date and time</small>
             </div>
             <div>
                 <label for="filter-datetime-before" style="display: block; margin-bottom: 5px; font-weight: 500;">Date Before:</label>
                 <input type="datetime-local" id="filter-datetime-before" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666;">Select both date and time</small>
             </div>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
@@ -868,12 +870,63 @@ document.addEventListener('DOMContentLoaded', function() {
     async function applyFilters() {
         const filterStatus = document.getElementById('filter-status');
         filterStatus.textContent = 'Applying filters...';
+        filterStatus.style.color = '#666';
         
         // Get filter values
-        const datetimeAfter = document.getElementById('filter-datetime-after').value;
-        const datetimeBefore = document.getElementById('filter-datetime-before').value;
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const datetimeAfter = datetimeAfterInput.value;
+        const datetimeBefore = datetimeBeforeInput.value;
         const andWords = document.getElementById('filter-and-words').value;
         const orWords = document.getElementById('filter-or-words').value;
+        
+        // Validate datetime inputs
+        // datetime-local input returns empty string if invalid or incomplete
+        // We need to check if the input looks like it has partial data
+        const afterInputRaw = datetimeAfterInput.value;
+        const beforeInputRaw = datetimeBeforeInput.value;
+        
+        // If input appears to have been touched but is invalid/incomplete
+        if (datetimeAfterInput.validity && !datetimeAfterInput.validity.valid && datetimeAfterInput.value === '') {
+            // Check if user might have entered partial data
+            const afterRawValue = datetimeAfterInput.getAttribute('value');
+            if (afterRawValue && afterRawValue !== '') {
+                filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeAfterInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        if (datetimeBeforeInput.validity && !datetimeBeforeInput.validity.valid && datetimeBeforeInput.value === '') {
+            const beforeRawValue = datetimeBeforeInput.getAttribute('value');
+            if (beforeRawValue && beforeRawValue !== '') {
+                filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeBeforeInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        // Additional validation: datetime-local should have format YYYY-MM-DDTHH:MM
+        // If the value is set but doesn't match the expected format, it's incomplete
+        if (afterInputRaw && afterInputRaw.length > 0 && afterInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeAfterInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (beforeInputRaw && beforeInputRaw.length > 0 && beforeInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeBeforeInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        // Reset border colors on successful validation
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
         
         // Update current filters
         currentFilters.datetime_after = datetimeAfter || null;
@@ -1038,10 +1091,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function clearFilters() {
-        document.getElementById('filter-datetime-after').value = '';
-        document.getElementById('filter-datetime-before').value = '';
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const filterStatus = document.getElementById('filter-status');
+        
+        datetimeAfterInput.value = '';
+        datetimeBeforeInput.value = '';
         document.getElementById('filter-and-words').value = '';
         document.getElementById('filter-or-words').value = '';
+        
+        // Reset border colors
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
+        
+        // Reset status
+        filterStatus.textContent = '';
+        filterStatus.style.color = '#666';
         
         currentFilters = {
             datetime_after: null,
