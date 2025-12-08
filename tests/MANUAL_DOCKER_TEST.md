@@ -75,9 +75,9 @@ except Exception as e:
 
 ### 4. Check environment variables
 ```bash
-docker exec test-container env | grep CHROME
+docker exec test-container env | grep BROWSER
 ```
-Expected: `CHROME_PATH=/usr/bin/chromium`
+Expected: `BROWSER_PATH=/usr/bin/chromium`
 
 ### 5. Test Chromium in headless mode
 ```bash
@@ -110,9 +110,9 @@ docker exec test-container python3 -c "import kaleido; print(kaleido.__version__
   ```
 
 ### Issue: "Kaleido requires Google Chrome to be installed"
-**Solution**: Chromium not installed or `CHROME_PATH` not set
+**Solution**: Chromium not installed or `BROWSER_PATH` not set
 - Check Dockerfile includes `chromium` package
-- Check `ENV CHROME_PATH=/usr/bin/chromium` is set
+- Check `ENV BROWSER_PATH=/usr/bin/chromium` is set
 
 ### Issue: "Missing common dependencies"
 **Solution**: System libraries missing

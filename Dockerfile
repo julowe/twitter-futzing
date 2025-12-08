@@ -80,8 +80,8 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8080
-# Point kaleido to the Chromium binary
-ENV CHROME_PATH=/usr/bin/chromium
+# Point kaleido (choreographer) to the Chromium binary
+ENV BROWSER_PATH=/usr/bin/chromium
 # Chromium flags for headless operation
 ENV CHROMIUM_FLAGS="--disable-dev-shm-usage --no-sandbox --disable-gpu"
 # SECRET_KEY: Not set by default. The app will create a persistent key file.

@@ -106,7 +106,7 @@ docker run -d -p 8080:8080 \
 - `PORT`: Port to run the web server on (default: 8080)
 - `SECRET_KEY`: Flask secret key for session management (auto-generated if not set)
 - `GUNICORN_WORKERS`: Number of worker processes (default: 2)
-- `CHROME_PATH`: Path to Chromium binary (default: /usr/bin/chromium)
+- `BROWSER_PATH`: Path to Chromium binary (default: /usr/bin/chromium)
 - `CHROMIUM_FLAGS`: Additional flags for Chromium (default: "--disable-dev-shm-usage --no-sandbox --disable-gpu")
 
 ## Health Check
