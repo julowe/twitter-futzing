@@ -21,6 +21,7 @@ from twitter_analyzer.core import (
     summarize,
     process_files,
 )
+from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
 from twitter_analyzer.visualizations import generate_all_charts, save_charts_as_images
 
 
@@ -375,6 +376,10 @@ Examples:
 
     print(f"Processed {len(df):,} records from {len(files)} file(s)")
 
+    # Analyze sentiment
+    print("Running sentiment analysis (this may take a while)...")
+    df = analyze_sentiment(df)
+
     # Apply filters
     filter_applied = False
     datetime_after = None
@@ -482,6 +487,19 @@ Examples:
             if args.verbose:
                 import traceback
                 traceback.print_exc()
+
+    # Generate wordcloud
+    if not args.no_images:
+        print("Generating wordcloud...")
+        try:
+            wc = generate_wordcloud(df)
+            if wc:
+                wc_path = output_dir / f"wordcloud_{timestamp}.png"
+                wc.to_file(str(wc_path))
+                print(f"  - {wc_path}")
+                image_files.append(str(wc_path))
+        except Exception as e:
+            print(f"  Warning: Failed to generate wordcloud: {e}", file=sys.stderr)
 
     # Generate reports
     print("\nGenerating reports...")

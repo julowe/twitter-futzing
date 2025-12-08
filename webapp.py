@@ -24,6 +24,7 @@ from flask import (
     session,
     url_for,
     jsonify,
+    send_file,
 )
 from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
@@ -38,6 +39,7 @@ from twitter_analyzer.core import (
     process_files,
 )
 from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
+from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
 
 
 app = Flask(__name__)
@@ -791,12 +793,31 @@ RESULTS_CONTENT = """
     <div class="tabs">
         <div class="tab active" data-tab="summary">Summary</div>
         <div class="tab" data-tab="charts">Visualizations</div>
+        <div class="tab" data-tab="nlp">NLP Analysis</div>
         <div class="tab" data-tab="top-tweets">Top Tweets</div>
         <div class="tab" data-tab="data">Data Preview</div>
     </div>
     
     <div id="summary" class="tab-content active">
         <div class="summary-box" id="summary-box">{{ summary }}</div>
+    </div>
+
+    <div id="charts" class="tab-content">
+        <div id="charts-container">
+            {{ charts_html | safe }}
+        </div>
+    </div>
+
+    <div id="nlp" class="tab-content">
+        <div class="card">
+            <h2>Word Cloud</h2>
+            <div style="text-align: center;">
+                <img src="{{ url_for('get_wordcloud_image') }}" alt="Word Cloud" style="max-width: 100%; height: auto; border-radius: 8px;">
+            </div>
+        </div>
+        <div id="nlp-charts-container">
+            {{ nlp_charts_html | safe }}
+        </div>
     </div>
     
     <div id="charts" class="tab-content">
@@ -1406,6 +1427,9 @@ def upload():
             flash("No records were extracted from the files", "error")
             return redirect(url_for("index"))
 
+        # Run sentiment analysis
+        df = analyze_sentiment(df)
+        
         # Store in session
         session_id = secrets.token_hex(16)
         session["data_id"] = session_id
@@ -1442,13 +1466,18 @@ def results():
 
     # Generate charts
     charts = generate_all_charts(df)
-    charts_html = ""
+    std_charts_html = ""
+    nlp_charts_html = ""
     first_chart = True
     for name, fig in charts.items():
         if fig is not None:
             chart_html = get_chart_html(fig, include_plotlyjs=first_chart)
-            charts_html += f'<div class="chart-container">{chart_html}</div>'
-            first_chart = False
+            
+            if name.startswith("sentiment"):
+                nlp_charts_html += f'<div class="chart-container">{chart_html}</div>'
+            else:
+                std_charts_html += f'<div class="chart-container">{chart_html}</div>'
+                first_chart = False
 
     # Get type counts
     type_counts = df["record_type"].value_counts().to_dict() if "record_type" in df.columns else {}
@@ -1510,7 +1539,8 @@ def results():
         content=render_template_string(
             RESULTS_CONTENT,
             summary=summary_text,
-            charts_html=charts_html,
+            charts_html=std_charts_html,
+            nlp_charts_html=nlp_charts_html,
             top_tweets=top_tweets,
             preview_data=preview_data,
         ),
@@ -1546,13 +1576,18 @@ def api_filter_data():
     
     # Generate charts
     charts = generate_all_charts(df)
-    charts_html = ""
+    std_charts_html = ""
+    nlp_charts_html = ""
     first_chart = True
     for name, fig in charts.items():
         if fig is not None:
             chart_html = get_chart_html(fig, include_plotlyjs=first_chart)
-            charts_html += f'<div class="chart-container">{chart_html}</div>'
-            first_chart = False
+            
+            if name.startswith("sentiment"):
+                nlp_charts_html += f'<div class="chart-container">{chart_html}</div>'
+            else:
+                std_charts_html += f'<div class="chart-container">{chart_html}</div>'
+                first_chart = False
     
     # Get type counts
     type_counts = df["record_type"].value_counts().to_dict() if "record_type" in df.columns else {}
@@ -1603,7 +1638,10 @@ def api_filter_data():
             "type_counts": type_counts,
         },
         "summary": summary_text,
-        "charts_html": charts_html,
+        "summary": summary_text,
+        "charts_html": std_charts_html,
+        "nlp_charts_html": nlp_charts_html,
+        "top_tweets": top_tweets,
         "top_tweets": top_tweets,
         "preview_data": preview_data,
     })
@@ -1726,6 +1764,39 @@ def api_data_preview():
 def health():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+
+@app.route("/wordcloud.png")
+def get_wordcloud_image():
+    """Serve the word cloud image."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return "", 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return "", 404
+        
+    df = data["df"]
+    
+    # Check if filters are applied via query params, similar to api endpoints
+    # This allows the wordcloud to update when filters change
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(df, **filter_params)
+    
+    wc = generate_wordcloud(df)
+    if not wc:
+        # Return a blank 1x1 pixel image if no data
+        return "", 204
+        
+    img_io = io.BytesIO()
+    wc.to_image().save(img_io, 'PNG')
+    img_io.seek(0)
+    
+    return send_file(img_io, mimetype='image/png')
 
 
 def create_app():
