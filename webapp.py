@@ -40,6 +40,45 @@ from twitter_analyzer.core import (
     process_files,
 )
 from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
+import plotly.io as pio
+
+# Configure Kaleido for Docker environment
+# This is necessary because Kaleido's bundled Chromium needs specific flags to run in Docker
+# We need to monkeypatch choreographer (used by kaleido 1.2+) to force sandbox disabled
+try:
+    import kaleido
+    # New Kaleido (1.2+) uses choreographer
+    try:
+        from choreographer.browsers.chromium import Chromium
+
+        # Save original init
+        _original_chromium_init = Chromium.__init__
+
+        def _patched_chromium_init(self, channel, path=None, **kwargs):
+            # Force sandbox disabled which adds --no-sandbox flag
+            kwargs['enable_sandbox'] = False
+
+            # Additional flags can be added by modifying the class if needed,
+            # but --disable-dev-shm-usage is usually default in choreographer
+
+            _original_chromium_init(self, channel, path, **kwargs)
+
+        # Apply patch
+        Chromium.__init__ = _patched_chromium_init
+        print("Successfully patched Kaleido/Choreographer for Docker environment")
+
+    except ImportError:
+        # Fallback for older Kaleido or if structure changed
+        pass
+
+    # Old Kaleido (<0.2.0) configuration (kept for backward compatibility if versions change)
+    if hasattr(pio, 'kaleido') and hasattr(pio.kaleido, 'scope'):
+        try:
+            pio.kaleido.scope.chromium_args += ("--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu")
+        except (AttributeError, TypeError):
+            pass
+except (ImportError, AttributeError):
+    pass
 
 
 app = Flask(__name__)
