@@ -39,6 +39,8 @@ from twitter_analyzer.core import (
     coerce_types,
     summarize,
     process_files,
+    get_archive_columns,
+    get_analysis_columns,
 )
 from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
 from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
@@ -1782,19 +1784,40 @@ def download():
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Generate and add CSV files
-        # All records CSV
-        csv_all = io.StringIO()
-        df.to_csv(csv_all, index=False)
-        zip_file.writestr(f"twitter_records_{timestamp}.csv", csv_all.getvalue())
+        # Get column lists
+        archive_cols = get_archive_columns(df)
+        analysis_cols = get_analysis_columns(df)
+        has_analysis = len(analysis_cols) > 0
         
-        # Per-type CSV files
+        # Generate and add CSV files
+        # Export archive-only data (original Twitter data)
+        # All records - archive only
+        csv_all_archive = io.StringIO()
+        df[archive_cols].to_csv(csv_all_archive, index=False)
+        zip_file.writestr(f"twitter_records_{timestamp}.csv", csv_all_archive.getvalue())
+        
+        # Per-type CSV files - archive only
         if "record_type" in df.columns:
             for typ in sorted(df["record_type"].dropna().unique()):
                 df_sub = df[df["record_type"] == typ]
                 csv_type = io.StringIO()
-                df_sub.to_csv(csv_type, index=False)
+                df_sub[archive_cols].to_csv(csv_type, index=False)
                 zip_file.writestr(f"{typ}_{timestamp}.csv", csv_type.getvalue())
+        
+        # Export data with analysis columns (if any analysis was performed)
+        if has_analysis:
+            # All records - with analysis
+            csv_all_analysis = io.StringIO()
+            df.to_csv(csv_all_analysis, index=False)
+            zip_file.writestr(f"twitter_records_{timestamp}_analysis.csv", csv_all_analysis.getvalue())
+            
+            # Per-type CSV files - with analysis
+            if "record_type" in df.columns:
+                for typ in sorted(df["record_type"].dropna().unique()):
+                    df_sub = df[df["record_type"] == typ]
+                    csv_type_analysis = io.StringIO()
+                    df_sub.to_csv(csv_type_analysis, index=False)
+                    zip_file.writestr(f"{typ}_{timestamp}_analysis.csv", csv_type_analysis.getvalue())
         
         # Generate summary
         summary_text = summarize(df)

@@ -234,6 +234,57 @@ def test_visualizations_all_chart_types():
             print(f"⚠ test_visualizations_all_chart_types skipped - kaleido not installed")
 
 
+def test_csv_export_separation():
+    """Test that both archive-only and analysis CSV files are created."""
+    test_dir = Path(__file__).parent
+    test_file = test_dir / "mock_tweets.js"
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Mock command line arguments
+        sys.argv = [
+            "cli.py",
+            str(test_file),
+            "--output-dir", tmpdir,
+            "--no-images",  # Skip images for faster testing
+        ]
+        
+        # Run the CLI
+        result = main()
+        
+        # Verify successful execution
+        assert result == 0, f"CLI should return 0, got {result}"
+        
+        # Check for CSV files
+        csv_files = list(Path(tmpdir).glob("*.csv"))
+        archive_csvs = [f for f in csv_files if "_analysis" not in f.name]
+        analysis_csvs = [f for f in csv_files if "_analysis" in f.name]
+        
+        # Should have at least one archive CSV
+        assert len(archive_csvs) > 0, f"Should create at least one archive CSV file, found {len(archive_csvs)}"
+        
+        # Should have at least one analysis CSV (since sentiment analysis runs by default)
+        assert len(analysis_csvs) > 0, f"Should create at least one analysis CSV file, found {len(analysis_csvs)}"
+        
+        # Verify archive CSVs don't have analysis columns
+        import pandas as pd
+        from twitter_analyzer.core import ANALYSIS_COLUMNS
+        
+        for csv_file in archive_csvs:
+            df = pd.read_csv(csv_file)
+            analysis_cols_found = [col for col in df.columns if col in ANALYSIS_COLUMNS]
+            assert len(analysis_cols_found) == 0, \
+                f"Archive CSV {csv_file.name} should not have analysis columns, but found: {analysis_cols_found}"
+        
+        # Verify analysis CSVs have analysis columns
+        for csv_file in analysis_csvs:
+            df = pd.read_csv(csv_file)
+            analysis_cols_found = [col for col in df.columns if col in ANALYSIS_COLUMNS]
+            assert len(analysis_cols_found) > 0, \
+                f"Analysis CSV {csv_file.name} should have analysis columns, but found none"
+        
+        print(f"✓ test_csv_export_separation passed - Created {len(archive_csvs)} archive CSVs and {len(analysis_csvs)} analysis CSVs")
+
+
 def main_test():
     """Run all tests."""
     print("=" * 70)
@@ -249,6 +300,7 @@ def main_test():
         test_cli_end_to_end,
         test_cli_no_images_flag,
         test_visualizations_all_chart_types,
+        test_csv_export_separation,
     ]
     
     failed = []

@@ -329,6 +329,41 @@ def coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Analysis columns that are added by our tool and not from Twitter archive
+ANALYSIS_COLUMNS = {
+    "sentiment_polarity",
+    "sentiment_subjectivity", 
+    "sentiment_category",
+    "text_len",  # Added by coerce_types
+}
+
+
+def get_archive_columns(df: pd.DataFrame) -> List[str]:
+    """Get list of columns that are from the original Twitter archive.
+    
+    Excludes analysis columns that are added by our processing.
+    
+    Args:
+        df: DataFrame with Twitter data.
+        
+    Returns:
+        List of column names from the original archive.
+    """
+    return [col for col in df.columns if col not in ANALYSIS_COLUMNS]
+
+
+def get_analysis_columns(df: pd.DataFrame) -> List[str]:
+    """Get list of columns that are added by analysis.
+    
+    Args:
+        df: DataFrame with Twitter data.
+        
+    Returns:
+        List of analysis column names present in the DataFrame.
+    """
+    return [col for col in df.columns if col in ANALYSIS_COLUMNS]
+
+
 def summarize(df: pd.DataFrame) -> str:
     """Generate a text summary of the DataFrame.
 

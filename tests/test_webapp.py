@@ -92,8 +92,12 @@ def test_download_generates_zip():
             
             # Check for all records CSV
             all_records_csv = [f for f in csv_files if 'twitter_records_' in f]
-            assert len(all_records_csv) == 1, "Should have one all-records CSV"
-            print("✓ Found all-records CSV file")
+            assert len(all_records_csv) >= 1, "Should have at least one all-records CSV"
+            print(f"✓ Found {len(all_records_csv)} all-records CSV file(s)")
+            
+            # Get the archive-only version (without _analysis suffix)
+            archive_csv = [f for f in all_records_csv if '_analysis' not in f]
+            assert len(archive_csv) >= 1, "Should have at least one archive-only all-records CSV"
             
             # Check for report files
             html_reports = [f for f in file_list if f.endswith('.html')]
@@ -108,7 +112,7 @@ def test_download_generates_zip():
             print(f"  Found {len(png_files)} PNG image(s)")
             
             # Verify CSV content is valid
-            all_records_filename = all_records_csv[0]
+            all_records_filename = archive_csv[0]
             csv_content = zip_file.read(all_records_filename).decode('utf-8')
             
             # Should have header row and data rows
@@ -333,6 +337,78 @@ def test_download_includes_wordcloud():
     return True
 
 
+def test_download_csv_separation():
+    """Test that download generates both archive-only and analysis CSV files."""
+    print("\ntest_download_csv_separation:")
+    print("-" * 70)
+    
+    with app.test_client() as client:
+        # Upload a file
+        test_dir = Path(__file__).parent
+        test_file = test_dir / "mock_tweets.js"
+        
+        with open(test_file, "rb") as f:
+            file_storage = FileStorage(
+                stream=f,
+                filename="mock_tweets.js",
+                content_type="application/javascript"
+            )
+            response = client.post(
+                "/upload",
+                data={"files": [file_storage]},
+                content_type="multipart/form-data"
+            )
+        
+        assert response.status_code in (200, 302), "Upload should succeed"
+        print("✓ File uploaded successfully")
+        
+        # Download the ZIP
+        response = client.get("/download")
+        assert response.status_code == 200, "Download should succeed"
+        
+        # Parse the ZIP file
+        zip_data = io.BytesIO(response.data)
+        with zipfile.ZipFile(zip_data, 'r') as zip_file:
+            file_list = zip_file.namelist()
+            
+            # Get CSV files
+            csv_files = [f for f in file_list if f.endswith('.csv')]
+            archive_csvs = [f for f in csv_files if "_analysis" not in f]
+            analysis_csvs = [f for f in csv_files if "_analysis" in f]
+            
+            print(f"✓ Found {len(csv_files)} CSV files total")
+            print(f"  - {len(archive_csvs)} archive-only CSVs")
+            print(f"  - {len(analysis_csvs)} analysis CSVs")
+            
+            # Should have at least one of each type
+            assert len(archive_csvs) > 0, f"Should have at least one archive CSV, found {len(archive_csvs)}"
+            assert len(analysis_csvs) > 0, f"Should have at least one analysis CSV, found {len(analysis_csvs)}"
+            
+            # Verify archive CSVs don't have analysis columns
+            import pandas as pd
+            from twitter_analyzer.core import ANALYSIS_COLUMNS
+            
+            for csv_filename in archive_csvs:
+                csv_data = zip_file.read(csv_filename)
+                df = pd.read_csv(io.BytesIO(csv_data))
+                analysis_cols_found = [col for col in df.columns if col in ANALYSIS_COLUMNS]
+                assert len(analysis_cols_found) == 0, \
+                    f"Archive CSV {csv_filename} should not have analysis columns, but found: {analysis_cols_found}"
+                print(f"  ✓ {csv_filename} has no analysis columns")
+            
+            # Verify analysis CSVs have analysis columns
+            for csv_filename in analysis_csvs:
+                csv_data = zip_file.read(csv_filename)
+                df = pd.read_csv(io.BytesIO(csv_data))
+                analysis_cols_found = [col for col in df.columns if col in ANALYSIS_COLUMNS]
+                assert len(analysis_cols_found) > 0, \
+                    f"Analysis CSV {csv_filename} should have analysis columns, but found none"
+                print(f"  ✓ {csv_filename} has {len(analysis_cols_found)} analysis columns")
+    
+    print("-" * 70)
+    return True
+
+
 def main():
     """Run all webapp tests."""
     print("=" * 70)
@@ -349,6 +425,7 @@ def main():
         test_download_with_multiple_file_types,
         test_download_png_generation,
         test_download_includes_wordcloud,
+        test_download_csv_separation,
     ]
     
     for test in tests:
