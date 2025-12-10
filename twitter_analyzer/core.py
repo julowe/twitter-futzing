@@ -212,10 +212,22 @@ def normalize_items(raw_items: List[Dict], source_label: str) -> List[Dict]:
             record_type = "deleted_tweet" if "deleted_at" in rec else "tweet"
             text_val = rec.get("full_text") or rec.get("text")
             created = rec.get("created_at")
+            
+            # Extract edit_info if available for tweet links
+            edit_tweet_id = None
+            edit_info = rec.get("edit_info")
+            if edit_info:
+                initial = edit_info.get("initial")
+                if initial:
+                    edit_tweet_ids = initial.get("editTweetIds")
+                    if edit_tweet_ids and len(edit_tweet_ids) > 0:
+                        edit_tweet_id = str(edit_tweet_ids[0])
+            
             row = {
                 "record_type": record_type,
                 "source_file": source_label,
                 "id_str": str(rec.get("id_str") or rec.get("id") or ""),
+                "edit_tweet_id": edit_tweet_id,
                 "created_at": created,
                 "text": text_val,
                 "lang": rec.get("lang"),
@@ -247,6 +259,7 @@ def normalize_items(raw_items: List[Dict], source_label: str) -> List[Dict]:
                 "record_type": "note",
                 "source_file": source_label,
                 "id_str": str(rec.get("noteTweetId") or ""),
+                "edit_tweet_id": None,
                 "created_at": rec.get("createdAt") or rec.get("updatedAt"),
                 "text": core.get("text"),
                 "lang": None,
@@ -271,6 +284,7 @@ def normalize_items(raw_items: List[Dict], source_label: str) -> List[Dict]:
                     "record_type": "unknown",
                     "source_file": source_label,
                     "id_str": "",
+                    "edit_tweet_id": None,
                     "created_at": None,
                     "text": json.dumps(it)[:5000],
                     "lang": None,
