@@ -330,11 +330,14 @@ def coerce_types(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Analysis columns that are added by our tool and not from Twitter archive
+# These columns are derived/computed from the original data:
+# - sentiment_polarity, sentiment_subjectivity, sentiment_category: Added by sentiment analysis
+# - text_len: Computed from text field (added by coerce_types for convenience)
 ANALYSIS_COLUMNS = {
     "sentiment_polarity",
     "sentiment_subjectivity", 
     "sentiment_category",
-    "text_len",  # Added by coerce_types
+    "text_len",  # Computed metric, not from original archive
 }
 
 
@@ -342,6 +345,9 @@ def get_archive_columns(df: pd.DataFrame) -> List[str]:
     """Get list of columns that are from the original Twitter archive.
     
     Excludes analysis columns that are added by our processing.
+    
+    Note: This function assumes any column not in ANALYSIS_COLUMNS is from the
+    original archive. If you add new derived columns, add them to ANALYSIS_COLUMNS.
     
     Args:
         df: DataFrame with Twitter data.
