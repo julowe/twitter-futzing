@@ -20,6 +20,8 @@ from twitter_analyzer.core import (
     coerce_types,
     summarize,
     process_files,
+    get_archive_columns,
+    get_analysis_columns,
 )
 from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
 from twitter_analyzer.visualizations import generate_all_charts, save_charts_as_images
@@ -456,17 +458,37 @@ Examples:
     # Export CSV files
     print(f"\nExporting to {output_dir}/...")
 
-    # All records
-    csv_all = output_dir / f"twitter_records_{timestamp}.csv"
-    df.to_csv(csv_all, index=False)
-    print(f"  - {csv_all}")
+    # Get column lists
+    archive_cols = get_archive_columns(df)
+    analysis_cols = get_analysis_columns(df)
+    has_analysis = len(analysis_cols) > 0
 
-    # Per type
+    # Export archive-only data (original Twitter data)
+    # All records - archive only
+    csv_all_archive = output_dir / f"twitter_records_{timestamp}.csv"
+    df[archive_cols].to_csv(csv_all_archive, index=False)
+    print(f"  - {csv_all_archive}")
+
+    # Per type - archive only
     for typ in sorted(df["record_type"].dropna().unique()):
         df_sub = df[df["record_type"] == typ]
         csv_path = output_dir / f"{typ}_{timestamp}.csv"
-        df_sub.to_csv(csv_path, index=False)
+        df_sub[archive_cols].to_csv(csv_path, index=False)
         print(f"  - {csv_path}")
+
+    # Export data with analysis columns (if any analysis was performed)
+    if has_analysis:
+        # All records - with analysis
+        csv_all_analysis = output_dir / f"twitter_records_{timestamp}_analysis.csv"
+        df.to_csv(csv_all_analysis, index=False)
+        print(f"  - {csv_all_analysis}")
+
+        # Per type - with analysis
+        for typ in sorted(df["record_type"].dropna().unique()):
+            df_sub = df[df["record_type"] == typ]
+            csv_path_analysis = output_dir / f"{typ}_{timestamp}_analysis.csv"
+            df_sub.to_csv(csv_path_analysis, index=False)
+            print(f"  - {csv_path_analysis}")
 
     # Generate charts
     print("\nGenerating visualizations...")
