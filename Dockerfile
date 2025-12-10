@@ -20,10 +20,10 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production image
 FROM python:3.12-slim
 
-# Install Chromium and its dependencies for kaleido (needed for PNG chart generation)
+# Install Chromium dependencies for kaleido (needed for PNG chart generation)
+# Note: We do NOT install the system chromium package as it may be incompatible with Kaleido.
+# Instead, we will download a compatible version using choreo_get_chrome.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
     # Chromium dependencies for headless mode
     libnss3 \
     libatk-bridge2.0-0 \
@@ -49,6 +49,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdrm2 \
     libxshmfence1 \
     libexpat1 \
+    # Dependencies for downloading chrome
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Security: Create non-root user
@@ -80,8 +82,12 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8080
-# Point kaleido (choreographer) to the Chromium binary
-ENV BROWSER_PATH=/usr/bin/chromium
+# Install compatible Chromium for Kaleido
+# We do this as appuser to ensure permissions are correct in the home directory
+# Using kaleido.get_chrome() which is the correct function in kaleido 1.2+
+# and we need to run it in an async loop or use the sync wrapper if available
+# But simpler: use the installed console script choreo_get_chrome if available, or python script
+RUN python -c "import asyncio; from kaleido import get_chrome; asyncio.run(get_chrome())"
 # Chromium flags for headless operation
 ENV CHROMIUM_FLAGS="--disable-dev-shm-usage --no-sandbox --disable-gpu"
 # SECRET_KEY: Not set by default. The app will create a persistent key file.
