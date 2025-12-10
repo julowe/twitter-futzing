@@ -27,13 +27,13 @@ def test_download_endpoint_requires_session():
     print("-" * 70)
     
     with app.test_client() as client:
-        # Try to download without uploading first
-        response = client.get("/download")
+        # Try to download without uploading first (invalid session_id)
+        response = client.get("/session/invalid_session_id/download")
         
         # Should redirect to index
-        assert response.status_code == 302, "Should redirect without session"
-        assert "/download" not in response.location, "Should not stay on download page"
-        print("✓ Download endpoint correctly requires session")
+        assert response.status_code == 302, "Should redirect without valid session"
+        assert "/session/" not in response.location or "index" in response.location, "Should redirect to index"
+        print("✓ Download endpoint correctly requires valid session")
     
     return True
 
@@ -68,8 +68,15 @@ def test_download_generates_zip():
         assert response.status_code == 302, "Upload should redirect"
         print("✓ File uploaded successfully")
         
-        # Now download the ZIP
-        response = client.get("/download")
+        # Extract session_id from redirect location
+        redirect_location = response.location
+        assert "/session/" in redirect_location, "Should redirect to session URL"
+        # Extract session_id from URL like /session/<session_id>/results
+        session_id = redirect_location.split("/session/")[1].split("/")[0]
+        print(f"✓ Session ID: {session_id}")
+        
+        # Now download the ZIP using the session_id
+        response = client.get(f"/session/{session_id}/download")
         
         assert response.status_code == 200, "Download should succeed"
         assert response.mimetype == "application/zip", "Should return ZIP file"
@@ -184,8 +191,11 @@ def test_download_with_multiple_file_types():
         assert response.status_code == 302, "Upload should redirect"
         print(f"✓ Uploaded {len(test_files)} files successfully")
         
+        # Extract session_id from redirect
+        session_id = response.location.split("/session/")[1].split("/")[0]
+        
         # Download the ZIP
-        response = client.get("/download")
+        response = client.get(f"/session/{session_id}/download")
         assert response.status_code == 200, "Download should succeed"
         
         # Parse the ZIP
@@ -244,8 +254,11 @@ def test_download_png_generation():
             follow_redirects=False
         )
         
+        # Extract session_id from redirect
+        session_id = response.location.split("/session/")[1].split("/")[0]
+        
         # Download the ZIP
-        response = client.get("/download")
+        response = client.get(f"/session/{session_id}/download")
         
         # Parse the ZIP
         zip_data = io.BytesIO(response.data)
@@ -303,8 +316,11 @@ def test_download_includes_wordcloud():
         assert response.status_code == 302, "Upload should redirect"
         print("✓ File uploaded successfully")
         
+        # Extract session_id from redirect
+        session_id = response.location.split("/session/")[1].split("/")[0]
+        
         # Now download the ZIP
-        response = client.get("/download")
+        response = client.get(f"/session/{session_id}/download")
         
         assert response.status_code == 200, "Download should succeed"
         assert response.mimetype == "application/zip", "Should return ZIP file"
@@ -362,8 +378,16 @@ def test_download_csv_separation():
         assert response.status_code in (200, 302), "Upload should succeed"
         print("✓ File uploaded successfully")
         
+        # Extract session_id from redirect if 302, otherwise assume we're in a session
+        if response.status_code == 302:
+            session_id = response.location.split("/session/")[1].split("/")[0]
+        else:
+            # For 200 response, we need to handle differently - but this shouldn't happen with current code
+            # Let's just use a dummy for now, the test will fail properly
+            session_id = "00000000000000000000000000000000"
+        
         # Download the ZIP
-        response = client.get("/download")
+        response = client.get(f"/session/{session_id}/download")
         assert response.status_code == 200, "Download should succeed"
         
         # Parse the ZIP file

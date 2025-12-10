@@ -64,9 +64,14 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 COPY twitter_analyzer/ ./twitter_analyzer/
 COPY webapp.py .
 COPY cli.py .
+COPY cleanup_sessions.py .
+COPY docker-entrypoint.sh .
 
 # Create exports directory with proper permissions
 RUN mkdir -p exports && chown -R appuser:appuser /app
+
+# Make entrypoint script executable
+RUN chmod +x docker-entrypoint.sh
 
 # Create directory for chrome_crashpad_handler database
 # chown just downstream directories also doesn't work...
@@ -90,7 +95,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
 
-# Default command runs the web app
+# Default command runs the web app with periodic session cleanup
 # Workers can be configured via GUNICORN_WORKERS environment variable
 # Default: 2 workers, suitable for light loads. For production, set based on CPU cores (2*cores+1)
-CMD ["sh", "-c", "python -m gunicorn --bind 0.0.0.0:${PORT:-8080} --workers ${GUNICORN_WORKERS:-2} --timeout 120 webapp:app"]
+CMD ["./docker-entrypoint.sh"]
