@@ -11,6 +11,7 @@ import re
 import secrets
 import tempfile
 import warnings
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -31,6 +32,7 @@ from werkzeug.utils import secure_filename
 
 import pandas as pd
 
+from cli import generate_html_report, generate_markdown_report
 from twitter_analyzer.core import (
     parse_twitter_export_bytes,
     normalize_items,
@@ -1528,7 +1530,7 @@ def results():
     header_stats = Markup(" | ".join(stats_parts))
     
     # Build header button
-    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>')
+    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a> <a href="{url_for("download")}" class="btn">📥 Download Output Data</a>')
     
     return render_template_string(
         BASE_TEMPLATE,
@@ -1758,6 +1760,92 @@ def api_data_preview():
         "has_more": offset + limit < len(df),
         "total": len(df),
     })
+
+
+@app.route("/download")
+def download():
+    """Generate and download a ZIP file containing all output files."""
+    data_id = session.get("data_id")
+    if not data_id:
+        flash("No data available. Please upload files first.", "info")
+        return redirect(url_for("index"))
+    
+    data = load_session_data(data_id)
+    if not data:
+        flash("Session expired. Please upload files again.", "info")
+        return redirect(url_for("index"))
+    
+    df = data["df"]
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Generate and add CSV files
+        # All records CSV
+        csv_all = io.StringIO()
+        df.to_csv(csv_all, index=False)
+        zip_file.writestr(f"twitter_records_{timestamp}.csv", csv_all.getvalue())
+        
+        # Per-type CSV files
+        if "record_type" in df.columns:
+            for typ in sorted(df["record_type"].dropna().unique()):
+                df_sub = df[df["record_type"] == typ]
+                csv_type = io.StringIO()
+                df_sub.to_csv(csv_type, index=False)
+                zip_file.writestr(f"{typ}_{timestamp}.csv", csv_type.getvalue())
+        
+        # Generate summary
+        summary_text = summarize(df)
+        
+        # Generate charts
+        charts = generate_all_charts(df)
+        
+        # Generate charts as PNG images directly to ZIP (no temp files needed)
+        image_names = []
+        try:
+            import kaleido
+            for name, fig in charts.items():
+                if fig is not None:
+                    try:
+                        # Generate PNG image directly to bytes (no file I/O)
+                        img_bytes = fig.to_image(format="png")
+                        image_name = f"{name}.png"
+                        zip_file.writestr(image_name, img_bytes)
+                        image_names.append(image_name)
+                    except Exception as chart_error:
+                        # Log error for this specific chart but continue with others
+                        print(f"Warning: Could not generate PNG for '{name}': {chart_error}")
+        except ImportError:
+            # kaleido not available - skip PNG generation, will have HTML charts instead
+            print("Info: kaleido not installed, skipping PNG generation (HTML report will have interactive charts)")
+        except Exception as e:
+            # Unexpected error with kaleido
+            print(f"Warning: Could not generate PNG images: {e}")
+        
+        # Generate Markdown report (reusing CLI function)
+        md_report = generate_markdown_report(df, summary_text, image_names, timestamp)
+        zip_file.writestr(f"report_{timestamp}.md", md_report)
+        
+        # Generate HTML report (reusing CLI function)
+        charts_html = []
+        for name, fig in charts.items():
+            if fig is not None:
+                charts_html.append(get_chart_html(fig, include_plotlyjs=(len(charts_html) == 0)))
+        
+        html_report = generate_html_report(df, summary_text, charts_html, timestamp)
+        zip_file.writestr(f"report_{timestamp}.html", html_report)
+    
+    # Prepare the ZIP file for download
+    zip_buffer.seek(0)
+    
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'twitter_analysis_{timestamp}.zip'
+    )
 
 
 @app.route("/health")
