@@ -9,6 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Tuple
 import tempfile
 
 # Default age threshold in seconds (30 days)
@@ -16,7 +17,7 @@ DEFAULT_MAX_AGE_DAYS = 30
 MAX_AGE_SECONDS = DEFAULT_MAX_AGE_DAYS * 24 * 60 * 60
 
 
-def cleanup_old_sessions(session_dir: Path, max_age_seconds: int = MAX_AGE_SECONDS) -> tuple[int, int]:
+def cleanup_old_sessions(session_dir: Path, max_age_seconds: int = MAX_AGE_SECONDS) -> Tuple[int, int]:
     """Remove session files older than max_age_seconds.
     
     Args:

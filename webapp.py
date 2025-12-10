@@ -133,6 +133,11 @@ app.secret_key = _secret_key
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
+# Session ID configuration
+# Session IDs are generated using secrets.token_hex(SESSION_ID_BYTES)
+# which produces SESSION_ID_BYTES * 2 hex characters
+SESSION_ID_BYTES = 16  # Results in 32-character hex string
+
 # Session data storage directory
 # Uses a shared temporary directory that works across gunicorn workers
 # Security note: pickle is used for efficient DataFrame serialization.
@@ -150,7 +155,8 @@ SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
 def is_valid_session_id(session_id: str) -> bool:
     """Validate session ID to prevent directory traversal attacks."""
     # Only allow hexadecimal characters (from secrets.token_hex), 32 chars length
-    return bool(re.match(r'^[a-f0-9]{32}$', session_id))
+    expected_length = SESSION_ID_BYTES * 2
+    return bool(re.match(rf'^[a-f0-9]{{{expected_length}}}$', session_id))
 
 
 def save_session_data(session_id: str, data: Dict) -> None:
@@ -1063,7 +1069,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update wordcloud with filter parameters
             const wordcloudImg = document.getElementById('wordcloud-img');
             if (wordcloudImg) {
-                const filterParams = buildFilterParams();
                 wordcloudImg.src = `/session/${sessionId}/wordcloud.png?${filterParams}&t=${Date.now()}`;
             }
             
@@ -1443,7 +1448,7 @@ def upload():
         df = analyze_sentiment(df)
         
         # Store in session with unique ID
-        session_id = secrets.token_hex(16)
+        session_id = secrets.token_hex(SESSION_ID_BYTES)
         save_session_data(session_id, {
             "df": df,
             "timestamp": datetime.now().isoformat(),
