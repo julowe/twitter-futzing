@@ -269,6 +269,70 @@ def test_download_png_generation():
     return True
 
 
+def test_download_includes_wordcloud():
+    """Test that download endpoint includes wordcloud image in ZIP."""
+    print("\ntest_download_includes_wordcloud:")
+    print("-" * 70)
+    
+    with app.test_client() as client:
+        # First, upload a file to create a session
+        test_dir = Path(__file__).parent
+        test_file = test_dir / "mock_tweets.js"
+        
+        with open(test_file, "rb") as f:
+            file_content = f.read()
+        
+        file_storage = FileStorage(
+            stream=io.BytesIO(file_content),
+            filename="mock_tweets.js",
+            content_type="application/javascript"
+        )
+        
+        # Upload file
+        response = client.post(
+            "/upload",
+            data={"files": [file_storage]},
+            content_type="multipart/form-data",
+            follow_redirects=False
+        )
+        
+        assert response.status_code == 302, "Upload should redirect"
+        print("✓ File uploaded successfully")
+        
+        # Now download the ZIP
+        response = client.get("/download")
+        
+        assert response.status_code == 200, "Download should succeed"
+        assert response.mimetype == "application/zip", "Should return ZIP file"
+        print("✓ Download endpoint returns ZIP file")
+        
+        # Parse the ZIP file
+        zip_data = io.BytesIO(response.data)
+        with zipfile.ZipFile(zip_data, 'r') as zip_file:
+            file_list = zip_file.namelist()
+            
+            print(f"✓ ZIP contains {len(file_list)} files:")
+            for filename in sorted(file_list):
+                file_size = zip_file.getinfo(filename).file_size
+                print(f"  - {filename} ({file_size:,} bytes)")
+            
+            # Check for wordcloud PNG
+            wordcloud_files = [f for f in file_list if 'wordcloud_' in f and f.endswith('.png')]
+            assert len(wordcloud_files) == 1, "Should have one wordcloud PNG file"
+            print(f"✓ Found wordcloud file: {wordcloud_files[0]}")
+            
+            # Verify the wordcloud PNG is valid
+            wordcloud_file = wordcloud_files[0]
+            png_data = zip_file.read(wordcloud_file)
+            # PNG files start with specific magic bytes
+            assert png_data[:8] == b'\x89PNG\r\n\x1a\n', f"{wordcloud_file} should be valid PNG"
+            assert len(png_data) > 100, "Wordcloud PNG should have substantial content"
+            print("✓ Wordcloud PNG is valid")
+    
+    print("-" * 70)
+    return True
+
+
 def main():
     """Run all webapp tests."""
     print("=" * 70)
@@ -284,6 +348,7 @@ def main():
         test_download_generates_zip,
         test_download_with_multiple_file_types,
         test_download_png_generation,
+        test_download_includes_wordcloud,
     ]
     
     for test in tests:
