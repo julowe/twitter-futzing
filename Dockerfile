@@ -14,17 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt && python -c "import asyncio; from kaleido import get_chrome; asyncio.run(get_chrome())"
 
 
 # Production image
 FROM python:3.12-slim
 
-# Install Chromium and its dependencies for kaleido (needed for PNG chart generation)
+# Install Chrome dependencies for kaleido (needed for PNG chart generation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  chromium \
-  chromium-driver \
-  # Chromium dependencies for headless mode
+  # Chrome dependencies for headless mode
   libnss3 \
   libatk-bridge2.0-0 \
   libcups2 \
@@ -45,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libdbus-1-3 \
   libglib2.0-0 \
   fonts-liberation \
-  # Additional dependencies for Chromium stability
+  # Additional dependencies for Chrome stability
   libdrm2 \
   libxshmfence1 \
   libexpat1 \
@@ -70,8 +68,9 @@ COPY cli.py .
 # Create exports directory with proper permissions
 RUN mkdir -p exports && chown -R appuser:appuser /app
 
-# Create directory for Chromium crash dumps (as root before switching user)
-RUN mkdir -p /tmp/.chromium && chmod 1777 /tmp/.chromium
+# Create directory for chrome_crashpad_handler database
+# chown just downstream directories also doesn't work...
+RUN mkdir -p /home/appuser/.config/ && chown -R appuser /home/appuser/.config/
 
 # Switch to non-root user
 USER appuser
@@ -80,10 +79,6 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8080
-# Point kaleido (choreographer) to the Chromium binary
-ENV BROWSER_PATH=/usr/bin/chromium
-# Chromium flags for headless operation
-ENV CHROMIUM_FLAGS="--disable-dev-shm-usage --no-sandbox --disable-gpu"
 # SECRET_KEY: Not set by default. The app will create a persistent key file.
 # For production deployments, set SECRET_KEY environment variable for better security:
 # docker run -e SECRET_KEY="your-secret-key" -p 8080:8080 twitter-analyzer
