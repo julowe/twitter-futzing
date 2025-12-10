@@ -1831,7 +1831,9 @@ def download():
                 wc_img_io = io.BytesIO()
                 wc.to_image().save(wc_img_io, 'PNG')
                 wc_img_io.seek(0)
-                zip_file.writestr(f"wordcloud_{timestamp}.png", wc_img_io.getvalue())
+                wordcloud_filename = f"wordcloud_{timestamp}.png"
+                zip_file.writestr(wordcloud_filename, wc_img_io.getvalue())
+                image_names.append(wordcloud_filename)
                 print("✓ Word cloud image added to ZIP")
         except Exception as wc_error:
             print(f"Warning: Could not generate word cloud: {wc_error}")
