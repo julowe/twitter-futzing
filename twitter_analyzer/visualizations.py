@@ -169,6 +169,78 @@ def create_day_of_week_chart(df: pd.DataFrame) -> Optional[go.Figure]:
     return fig
 
 
+def create_sentiment_counts_chart(df: pd.DataFrame) -> Optional[go.Figure]:
+    """Create a bar chart of sentiment categories.
+
+    Args:
+        df: DataFrame with Twitter data.
+
+    Returns:
+        Plotly Figure or None if no sentiment data available.
+    """
+    if "sentiment_category" not in df.columns:
+        return None
+
+    counts = df["sentiment_category"].value_counts().reset_index()
+    counts.columns = ["sentiment", "count"]
+
+    color_map = {
+        "Positive": "#00CC96",  # Greenish
+        "Neutral": "#636EFA",   # Blueish
+        "Negative": "#EF553B"   # Reddish
+    }
+
+    fig = px.bar(
+        counts, 
+        x="sentiment", 
+        y="count", 
+        title="Sentiment Distribution",
+        color="sentiment",
+        color_discrete_map=color_map
+    )
+    return fig
+
+
+def create_sentiment_over_time_chart(df: pd.DataFrame) -> Optional[go.Figure]:
+    """Create a line chart of average sentiment over time.
+
+    Args:
+        df: DataFrame with Twitter data.
+
+    Returns:
+        Plotly Figure or None if no sentiment/date data available.
+    """
+    if "sentiment_polarity" not in df.columns or "created_at" not in df.columns:
+        return None
+        
+    if not df["created_at"].notna().any():
+        return None
+
+    # Resample to monthly average sentiment
+    ts = (
+        df.dropna(subset=["created_at", "sentiment_polarity"])
+        .set_index("created_at")
+        .resample("ME")["sentiment_polarity"]
+        .mean()
+        .reset_index()
+    )
+
+    if ts.empty:
+        return None
+
+    fig = px.line(
+        ts,
+        x="created_at",
+        y="sentiment_polarity",
+        title="Average Sentiment Over Time (Monthly)",
+        markers=True,
+    )
+    # Add a horizontal line at 0 for neutral reference
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Neutral")
+    
+    return fig
+
+
 def generate_all_charts(df: pd.DataFrame) -> Dict[str, Optional[go.Figure]]:
     """Generate all available charts for the data.
 
@@ -185,6 +257,8 @@ def generate_all_charts(df: pd.DataFrame) -> Dict[str, Optional[go.Figure]]:
         "top_sources": create_top_sources_chart(df),
         "hourly_activity": create_hourly_activity_chart(df),
         "day_of_week": create_day_of_week_chart(df),
+        "sentiment_counts": create_sentiment_counts_chart(df),
+        "sentiment_over_time": create_sentiment_over_time_chart(df),
     }
 
 

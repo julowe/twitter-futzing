@@ -27,6 +27,7 @@ from flask import (
     jsonify,
     send_file,
 )
+from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
 
 import pandas as pd
@@ -40,6 +41,7 @@ from twitter_analyzer.core import (
     process_files,
 )
 from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
+from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
 
 
 app = Flask(__name__)
@@ -244,14 +246,29 @@ BASE_TEMPLATE = """
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
+        header .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
         header h1 {
             margin: 0;
             color: #1da1f2;
             font-size: 1.8em;
+            flex: 1;
+        }
+        header .header-button {
+            flex-shrink: 0;
         }
         header p {
             margin: 10px 0 0;
             color: #666;
+        }
+        header .header-stats {
+            margin: 10px 0 0;
+            color: #333;
+            font-size: 0.95em;
         }
         .card {
             background: rgba(255,255,255,0.95);
@@ -496,6 +513,49 @@ BASE_TEMPLATE = """
         .tab-content.active {
             display: block;
         }
+        .collapsible-section {
+            margin-bottom: 20px;
+        }
+        .collapsible-header {
+            background: #f8f9fa;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: background 0.3s ease;
+        }
+        .collapsible-header:hover {
+            background: #e9ecef;
+        }
+        .collapsible-header .title {
+            font-weight: 500;
+            color: #333;
+        }
+        .collapsible-header .toggle-icon {
+            transition: transform 0.3s ease;
+            font-size: 1.2em;
+        }
+        .collapsible-header.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .collapsible-content.expanded {
+            max-height: 2000px;
+            overflow: visible;
+        }
+        .collapsible-content-inner {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+            margin-top: -8px;
+        }
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -512,8 +572,20 @@ BASE_TEMPLATE = """
 <body>
     <div class="container">
         <header>
-            <h1>🐦 Twitter Archive Analyzer</h1>
-            <p>Upload your Twitter archive files (.js or .json) for analysis and visualization</p>
+            <div class="header-content">
+                <h1>{{ header_title | default('🐦 Twitter Archive Analyzer') }}</h1>
+                {% if header_button %}
+                <div class="header-button">
+                    {{ header_button | safe }}
+                </div>
+                {% endif %}
+            </div>
+            {% if header_description %}
+            <p>{{ header_description }}</p>
+            {% endif %}
+            {% if header_stats %}
+            <div class="header-stats">{{ header_stats | safe }}</div>
+            {% endif %}
         </header>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -680,38 +752,78 @@ document.addEventListener('DOMContentLoaded', function() {
 
 RESULTS_CONTENT = """
 <div class="card">
-    <h2>Analysis Results</h2>
-    <div style="margin-bottom: 20px;">
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Upload More Files</a>
-        <a href="{{ url_for('download') }}" class="btn" style="float: right;">📥 Download Output Data</a>
-    </div>
-    
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ total_records | format_number }}</div>
-            <div class="stat-label">Total Records</div>
+    <div class="collapsible-section">
+        <div class="collapsible-header" id="filters-toggle">
+            <span class="title">Filters</span>
+            <span class="toggle-icon">▼</span>
         </div>
-        {% for type, count in type_counts.items() %}
-        <div class="stat-card">
-            <div class="stat-value">{{ count | format_number }}</div>
-            <div class="stat-label">{{ type | title }}</div>
+        <div class="collapsible-content" id="filters-content">
+            <div class="collapsible-content-inner">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-datetime-after" style="display: block; margin-bottom: 5px; font-weight: 500;">Date After:</label>
+                        <input type="datetime-local" id="filter-datetime-after" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Select both date and time</small>
+                    </div>
+                    <div>
+                        <label for="filter-datetime-before" style="display: block; margin-bottom: 5px; font-weight: 500;">Date Before:</label>
+                        <input type="datetime-local" id="filter-datetime-before" class="filter-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Select both date and time</small>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-and-words" style="display: block; margin-bottom: 5px; font-weight: 500;">AND Words (all must be present):</label>
+                        <input type="text" id="filter-and-words" class="filter-input" placeholder="e.g., blue, green" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Separate multiple words with commas</small>
+                    </div>
+                    <div>
+                        <label for="filter-or-words" style="display: block; margin-bottom: 5px; font-weight: 500;">OR Words (at least one must be present):</label>
+                        <input type="text" id="filter-or-words" class="filter-input" placeholder="e.g., red, purple blue" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666;">Separate multiple words with commas</small>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="apply-filters" class="btn" style="flex: 0 0 auto;">Apply Filters</button>
+                    <button id="clear-filters" class="btn btn-secondary" style="flex: 0 0 auto;">Clear Filters</button>
+                    <div id="filter-status" style="display: flex; align-items: center; margin-left: 15px; color: #666; font-size: 14px;"></div>
+                </div>
+            </div>
         </div>
-        {% endfor %}
     </div>
     
     <div class="tabs">
         <div class="tab active" data-tab="summary">Summary</div>
         <div class="tab" data-tab="charts">Visualizations</div>
+        <div class="tab" data-tab="nlp">NLP Analysis</div>
         <div class="tab" data-tab="top-tweets">Top Tweets</div>
         <div class="tab" data-tab="data">Data Preview</div>
     </div>
     
     <div id="summary" class="tab-content active">
-        <div class="summary-box">{{ summary }}</div>
+        <div class="summary-box" id="summary-box">{{ summary }}</div>
+    </div>
+
+    <div id="charts" class="tab-content">
+        <div id="charts-container">
+            {{ charts_html | safe }}
+        </div>
+    </div>
+
+    <div id="nlp" class="tab-content">
+        <div class="card">
+            <h2>Word Cloud</h2>
+            <div style="text-align: center;">
+                <img src="{{ url_for('get_wordcloud_image') }}" alt="Word Cloud" style="max-width: 100%; height: auto; border-radius: 8px;">
+            </div>
+        </div>
+        <div id="nlp-charts-container">
+            {{ nlp_charts_html | safe }}
+        </div>
     </div>
     
     <div id="charts" class="tab-content">
-        {{ charts_html | safe }}
+        <div id="charts-container">{{ charts_html | safe }}</div>
     </div>
     
     <div id="top-tweets" class="tab-content">
@@ -800,6 +912,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // Collapsible filter section
+    const filtersToggle = document.getElementById('filters-toggle');
+    const filtersContent = document.getElementById('filters-content');
+    
+    if (filtersToggle && filtersContent) {
+        filtersToggle.addEventListener('click', function() {
+            this.classList.toggle('expanded');
+            filtersContent.classList.toggle('expanded');
+        });
+    }
+    
     // Function to escape HTML to prevent XSS
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -815,6 +938,277 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Filter functionality
+    let currentFilters = {
+        datetime_after: null,
+        datetime_before: null,
+        filter_and: null,
+        filter_or: null
+    };
+    
+    function buildFilterParams() {
+        const params = new URLSearchParams();
+        if (currentFilters.datetime_after) {
+            params.append('datetime_after', currentFilters.datetime_after);
+        }
+        if (currentFilters.datetime_before) {
+            params.append('datetime_before', currentFilters.datetime_before);
+        }
+        if (currentFilters.filter_and) {
+            params.append('filter_and', currentFilters.filter_and);
+        }
+        if (currentFilters.filter_or) {
+            params.append('filter_or', currentFilters.filter_or);
+        }
+        return params.toString();
+    }
+    
+    async function applyFilters() {
+        const filterStatus = document.getElementById('filter-status');
+        filterStatus.textContent = 'Applying filters...';
+        filterStatus.style.color = '#666';
+        
+        // Get filter values
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const datetimeAfter = datetimeAfterInput.value;
+        const datetimeBefore = datetimeBeforeInput.value;
+        const andWords = document.getElementById('filter-and-words').value;
+        const orWords = document.getElementById('filter-or-words').value;
+        
+        // Validate datetime inputs
+        // datetime-local input returns empty string if invalid or incomplete
+        // We need to check if the input looks like it has partial data
+        const afterInputRaw = datetimeAfterInput.value;
+        const beforeInputRaw = datetimeBeforeInput.value;
+        
+        // If input appears to have been touched but is invalid/incomplete
+        if (datetimeAfterInput.validity && !datetimeAfterInput.validity.valid && datetimeAfterInput.value === '') {
+            // Check if user might have entered partial data
+            const afterRawValue = datetimeAfterInput.getAttribute('value');
+            if (afterRawValue && afterRawValue !== '') {
+                filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeAfterInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        if (datetimeBeforeInput.validity && !datetimeBeforeInput.validity.valid && datetimeBeforeInput.value === '') {
+            const beforeRawValue = datetimeBeforeInput.getAttribute('value');
+            if (beforeRawValue && beforeRawValue !== '') {
+                filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+                filterStatus.style.color = '#dc2626';
+                datetimeBeforeInput.style.borderColor = '#dc2626';
+                return;
+            }
+        }
+        
+        // Additional validation: datetime-local should have format YYYY-MM-DDTHH:MM
+        // If the value is set but doesn't match the expected format, it's incomplete
+        if (afterInputRaw && afterInputRaw.length > 0 && afterInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date After field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeAfterInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (beforeInputRaw && beforeInputRaw.length > 0 && beforeInputRaw.length < 16) {
+            filterStatus.textContent = 'Error: Date Before field is incomplete. Please select both date and time.';
+            filterStatus.style.color = '#dc2626';
+            datetimeBeforeInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        // Reset border colors on successful validation
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
+        
+        // Update current filters
+        currentFilters.datetime_after = datetimeAfter || null;
+        currentFilters.datetime_before = datetimeBefore || null;
+        currentFilters.filter_and = andWords || null;
+        currentFilters.filter_or = orWords || null;
+        
+        try {
+            // Fetch filtered data
+            const filterParams = buildFilterParams();
+            const response = await fetch(`/api/filter-data?${filterParams}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                filterStatus.textContent = `Error: ${data.error}`;
+                filterStatus.style.color = '#dc2626';
+                return;
+            }
+            
+            // Update stats
+            updateStats(data.stats);
+            
+            // Update summary
+            document.getElementById('summary-box').textContent = data.summary;
+            
+            // Update charts
+            updateCharts(data.charts_html);
+            
+            // Update top tweets
+            updateTopTweets(data.top_tweets);
+            
+            // Update data preview
+            updateDataPreview(data.preview_data);
+            
+            // Update status
+            const hasFilters = datetimeAfter || datetimeBefore || andWords || orWords;
+            if (hasFilters) {
+                filterStatus.textContent = `Showing ${data.stats.total_records.toLocaleString()} of ${data.stats.unfiltered_total.toLocaleString()} records`;
+                filterStatus.style.color = '#1da1f2';
+            } else {
+                filterStatus.textContent = '';
+            }
+        } catch (err) {
+            console.error('Error applying filters:', err);
+            filterStatus.textContent = 'Error applying filters';
+            filterStatus.style.color = '#dc2626';
+        }
+    }
+    
+    function updateStats(stats) {
+        // Update header stats text
+        const headerStats = document.querySelector('header .header-stats');
+        if (headerStats) {
+            let statsParts = [`Total Records: ${stats.total_records.toLocaleString()}`];
+            for (const [type, count] of Object.entries(stats.type_counts)) {
+                statsParts.push(`${type.charAt(0).toUpperCase() + type.slice(1)}: ${count.toLocaleString()}`);
+            }
+            headerStats.textContent = statsParts.join(' | ');
+        }
+    }
+    
+    function updateCharts(chartsHtml) {
+        const chartsContainer = document.getElementById('charts-container');
+        
+        // Clear existing charts
+        chartsContainer.innerHTML = '';
+        
+        if (!chartsHtml) {
+            return;
+        }
+        
+        // Create a temporary container to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = chartsHtml;
+        
+        // Extract and append all chart containers
+        const chartDivs = tempDiv.querySelectorAll('.chart-container');
+        chartDivs.forEach(chartDiv => {
+            chartsContainer.appendChild(chartDiv.cloneNode(true));
+        });
+        
+        // Execute all script tags from the charts HTML
+        const scripts = tempDiv.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            if (oldScript.src) {
+                newScript.src = oldScript.src;
+            } else {
+                newScript.textContent = oldScript.textContent;
+            }
+            document.body.appendChild(newScript);
+            // Remove the script after a short delay to avoid accumulation
+            setTimeout(() => {
+                if (newScript.parentNode) {
+                    newScript.parentNode.removeChild(newScript);
+                }
+            }, 100);
+        });
+    }
+    
+    function updateTopTweets(tweets) {
+        const tbody = document.getElementById('top-tweets-body');
+        const loadMoreBtn = document.getElementById('load-more-tweets');
+        
+        tbody.innerHTML = '';
+        tweets.forEach(tweet => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${escapeHtml(tweet.id_str)}</td>
+                <td class="text-cell">${escapeHtml(tweet.text)}</td>
+                <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
+                <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
+                <td>${escapeHtml(tweet.date)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        updateCount('top-tweets-count', tweets.length);
+        
+        // Reset load more button
+        if (loadMoreBtn) {
+            loadMoreBtn.dataset.offset = '20';
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = 'Load More...';
+        }
+    }
+    
+    function updateDataPreview(records) {
+        const tbody = document.getElementById('data-preview-body');
+        const loadMoreBtn = document.getElementById('load-more-data');
+        
+        tbody.innerHTML = '';
+        records.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${escapeHtml(record.record_type)}</td>
+                <td>${escapeHtml(record.id_str)}</td>
+                <td>${escapeHtml(record.date)}</td>
+                <td class="text-cell">${escapeHtml(record.text)}</td>
+                <td>${escapeHtml(record.source)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        updateCount('data-preview-count', records.length);
+        
+        // Reset load more button
+        if (loadMoreBtn) {
+            loadMoreBtn.dataset.offset = '100';
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = 'Load More...';
+        }
+    }
+    
+    function clearFilters() {
+        const datetimeAfterInput = document.getElementById('filter-datetime-after');
+        const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const filterStatus = document.getElementById('filter-status');
+        
+        datetimeAfterInput.value = '';
+        datetimeBeforeInput.value = '';
+        document.getElementById('filter-and-words').value = '';
+        document.getElementById('filter-or-words').value = '';
+        
+        // Reset border colors
+        datetimeAfterInput.style.borderColor = '#ddd';
+        datetimeBeforeInput.style.borderColor = '#ddd';
+        
+        // Reset status
+        filterStatus.textContent = '';
+        filterStatus.style.color = '#666';
+        
+        currentFilters = {
+            datetime_after: null,
+            datetime_before: null,
+            filter_and: null,
+            filter_or: null
+        };
+        
+        applyFilters();
+    }
+    
+    // Attach event listeners
+    document.getElementById('apply-filters').addEventListener('click', applyFilters);
+    document.getElementById('clear-filters').addEventListener('click', clearFilters);
+    
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
     if (loadMoreTweets) {
@@ -827,7 +1221,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}`);
+                const filterParams = buildFilterParams();
+                const url = `/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.tweets && data.tweets.length > 0) {
@@ -879,7 +1275,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = 'Loading...';
             
             try {
-                const response = await fetch(`/api/data-preview?offset=${offset}&limit=${dataPageSize}`);
+                const filterParams = buildFilterParams();
+                const url = `/api/data-preview?offset=${offset}&limit=${dataPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.records && data.records.length > 0) {
@@ -936,12 +1334,60 @@ def format_number(value):
 app.jinja_env.filters["format_number"] = format_number
 
 
+def parse_filter_params():
+    """Parse filter parameters from request arguments.
+    
+    Returns:
+        Dictionary with filter parameters ready for filter_dataframe function.
+    """
+    import pytz
+    
+    filters = {}
+    
+    # Parse datetime filters
+    datetime_after_str = request.args.get("datetime_after")
+    if datetime_after_str:
+        try:
+            # Parse the datetime string
+            dt = pd.to_datetime(datetime_after_str)
+            # Make timezone-aware if not already
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(pytz.UTC)
+            filters["datetime_after"] = dt.to_pydatetime()
+        except Exception:
+            pass  # Ignore invalid datetime
+    
+    datetime_before_str = request.args.get("datetime_before")
+    if datetime_before_str:
+        try:
+            dt = pd.to_datetime(datetime_before_str)
+            if dt.tzinfo is None:
+                dt = dt.tz_localize(pytz.UTC)
+            filters["datetime_before"] = dt.to_pydatetime()
+        except Exception:
+            pass
+    
+    # Parse text filters
+    filter_and_str = request.args.get("filter_and")
+    if filter_and_str:
+        # Split by comma and strip whitespace
+        filters["filter_and"] = [w.strip() for w in filter_and_str.split(",") if w.strip()]
+    
+    filter_or_str = request.args.get("filter_or")
+    if filter_or_str:
+        filters["filter_or"] = [w.strip() for w in filter_or_str.split(",") if w.strip()]
+    
+    return filters
+
+
 @app.route("/")
 def index():
     """Render the upload page."""
     return render_template_string(
         BASE_TEMPLATE,
         title="Upload",
+        header_title="🐦 Twitter Archive Analyzer",
+        header_description="Upload your Twitter archive files (.js or .json) for analysis and visualization",
         content=render_template_string(UPLOAD_CONTENT),
         scripts=UPLOAD_SCRIPTS,
     )
@@ -983,6 +1429,9 @@ def upload():
             flash("No records were extracted from the files", "error")
             return redirect(url_for("index"))
 
+        # Run sentiment analysis
+        df = analyze_sentiment(df)
+        
         # Store in session
         session_id = secrets.token_hex(16)
         session["data_id"] = session_id
@@ -1019,13 +1468,18 @@ def results():
 
     # Generate charts
     charts = generate_all_charts(df)
-    charts_html = ""
+    std_charts_html = ""
+    nlp_charts_html = ""
     first_chart = True
     for name, fig in charts.items():
         if fig is not None:
             chart_html = get_chart_html(fig, include_plotlyjs=first_chart)
-            charts_html += f'<div class="chart-container">{chart_html}</div>'
-            first_chart = False
+            
+            if name.startswith("sentiment"):
+                nlp_charts_html += f'<div class="chart-container">{chart_html}</div>'
+            else:
+                std_charts_html += f'<div class="chart-container">{chart_html}</div>'
+                first_chart = False
 
     # Get type counts
     type_counts = df["record_type"].value_counts().to_dict() if "record_type" in df.columns else {}
@@ -1069,20 +1523,130 @@ def results():
             }
         )
 
+    # Build header stats text (escape for safety even though record_type is controlled)
+    stats_parts = [f"Total Records: {escape(format_number(len(df)))}"]
+    for record_type, count in type_counts.items():
+        stats_parts.append(f"{escape(record_type.title())}: {escape(format_number(count))}")
+    header_stats = Markup(" | ".join(stats_parts))
+    
+    # Build header button
+    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a>')
+    
     return render_template_string(
         BASE_TEMPLATE,
         title="Results",
+        header_title="🐦 Twitter Archive Analyzer - Results",
+        header_button=header_button,
+        header_stats=header_stats,
         content=render_template_string(
             RESULTS_CONTENT,
-            total_records=len(df),
-            type_counts=type_counts,
             summary=summary_text,
-            charts_html=charts_html,
+            charts_html=std_charts_html,
+            nlp_charts_html=nlp_charts_html,
             top_tweets=top_tweets,
             preview_data=preview_data,
         ),
         scripts=RESULTS_SCRIPTS,
     )
+
+
+@app.route("/api/filter-data")
+def api_filter_data():
+    """API endpoint to get filtered data with all components updated."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return jsonify({"error": "No data available"}), 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return jsonify({"error": "Session expired"}), 404
+    
+    original_df = data["df"]
+    unfiltered_total = len(original_df)
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
+    
+    # Generate summary
+    summary_text = summarize(df)
+    
+    # Generate charts
+    charts = generate_all_charts(df)
+    std_charts_html = ""
+    nlp_charts_html = ""
+    first_chart = True
+    for name, fig in charts.items():
+        if fig is not None:
+            chart_html = get_chart_html(fig, include_plotlyjs=first_chart)
+            
+            if name.startswith("sentiment"):
+                nlp_charts_html += f'<div class="chart-container">{chart_html}</div>'
+            else:
+                std_charts_html += f'<div class="chart-container">{chart_html}</div>'
+                first_chart = False
+    
+    # Get type counts
+    type_counts = df["record_type"].value_counts().to_dict() if "record_type" in df.columns else {}
+    
+    # Get top tweets
+    top_tweets = []
+    if "favorite_count" in df.columns and df["favorite_count"].notna().any():
+        tweets_only = df[df["record_type"] == "tweet"] if "record_type" in df.columns else df
+        top = tweets_only.nlargest(20, "favorite_count")
+        for _, row in top.iterrows():
+            date_str = (
+                row["created_at"].strftime("%Y-%m-%d %H:%M")
+                if pd.notna(row.get("created_at"))
+                else "N/A"
+            )
+            top_tweets.append(
+                {
+                    "id_str": row.get("id_str", ""),
+                    "text": row.get("text", ""),
+                    "favorite_count": row.get("favorite_count", 0),
+                    "retweet_count": row.get("retweet_count", 0) or 0,
+                    "date": date_str,
+                }
+            )
+    
+    # Get preview data
+    preview_data = []
+    for _, row in df.head(100).iterrows():
+        date_str = (
+            row["created_at"].strftime("%Y-%m-%d %H:%M")
+            if pd.notna(row.get("created_at"))
+            else "N/A"
+        )
+        preview_data.append(
+            {
+                "record_type": row.get("record_type", ""),
+                "id_str": row.get("id_str", ""),
+                "date": date_str,
+                "text": row.get("text", "") or "",
+                "source": row.get("source", "") or "",
+            }
+        )
+    
+    return jsonify({
+        "stats": {
+            "total_records": len(df),
+            "unfiltered_total": unfiltered_total,
+            "type_counts": type_counts,
+        },
+        "summary": summary_text,
+        "summary": summary_text,
+        "charts_html": std_charts_html,
+        "nlp_charts_html": nlp_charts_html,
+        "top_tweets": top_tweets,
+        "top_tweets": top_tweets,
+        "preview_data": preview_data,
+    })
 
 
 @app.route("/api/top-tweets")
@@ -1096,7 +1660,16 @@ def api_top_tweets():
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
-    df = data["df"]
+    original_df = data["df"]
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
     
     # Get pagination parameters with validation
     offset = max(0, request.args.get("offset", 0, type=int))
@@ -1147,7 +1720,16 @@ def api_data_preview():
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
-    df = data["df"]
+    original_df = data["df"]
+    
+    # Parse and apply filters
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(original_df, **filter_params)
+    else:
+        df = original_df
     
     # Get pagination parameters with validation
     offset = max(0, request.args.get("offset", 0, type=int))
@@ -1270,6 +1852,39 @@ def download():
 def health():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+
+@app.route("/wordcloud.png")
+def get_wordcloud_image():
+    """Serve the word cloud image."""
+    data_id = session.get("data_id")
+    if not data_id:
+        return "", 404
+    
+    data = load_session_data(data_id)
+    if not data:
+        return "", 404
+        
+    df = data["df"]
+    
+    # Check if filters are applied via query params, similar to api endpoints
+    # This allows the wordcloud to update when filters change
+    from twitter_analyzer.core import filter_dataframe
+    filter_params = parse_filter_params()
+    
+    if filter_params:
+        df = filter_dataframe(df, **filter_params)
+    
+    wc = generate_wordcloud(df)
+    if not wc:
+        # Return a blank 1x1 pixel image if no data
+        return "", 204
+        
+    img_io = io.BytesIO()
+    wc.to_image().save(img_io, 'PNG')
+    img_io.seek(0)
+    
+    return send_file(img_io, mimetype='image/png')
 
 
 def create_app():
