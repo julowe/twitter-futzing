@@ -7,8 +7,8 @@ WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+  gcc \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
 COPY requirements.txt .
@@ -22,34 +22,34 @@ FROM python:3.12-slim
 
 # Install Chromium and its dependencies for kaleido (needed for PNG chart generation)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
-    # Chromium dependencies for headless mode
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libxkbcommon0 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    # Additional dependencies for X11 and fonts
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxext6 \
-    libdbus-1-3 \
-    libglib2.0-0 \
-    fonts-liberation \
-    # Additional dependencies for Chromium stability
-    libdrm2 \
-    libxshmfence1 \
-    libexpat1 \
-    && rm -rf /var/lib/apt/lists/*
+  chromium \
+  chromium-driver \
+  # Chromium dependencies for headless mode
+  libnss3 \
+  libatk-bridge2.0-0 \
+  libcups2 \
+  libxcomposite1 \
+  libxdamage1 \
+  libxfixes3 \
+  libxrandr2 \
+  libgbm1 \
+  libxkbcommon0 \
+  libpango-1.0-0 \
+  libcairo2 \
+  libasound2 \
+  # Additional dependencies for X11 and fonts
+  libx11-6 \
+  libx11-xcb1 \
+  libxcb1 \
+  libxext6 \
+  libdbus-1-3 \
+  libglib2.0-0 \
+  fonts-liberation \
+  # Additional dependencies for Chromium stability
+  libdrm2 \
+  libxshmfence1 \
+  libexpat1 \
+  && rm -rf /var/lib/apt/lists/*
 
 # Security: Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -93,7 +93,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
 
 # Default command runs the web app
 # Workers can be configured via GUNICORN_WORKERS environment variable
