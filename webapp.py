@@ -835,21 +835,23 @@ RESULTS_CONTENT = """
             <table class="data-table" id="top-tweets-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>Date</th>
                         <th>Text</th>
                         <th>Favorites</th>
                         <th>Retweets</th>
-                        <th>Date</th>
+                        <th title="Sentiment Analysis with TextBlob's default settings. The polarity score goes from -1.0 to 1.0 for Negative to Positive">Polarity</th>
+                        <th title="Sentiment Analysis with TextBlob's default settings. The Subjectivity score goes from 0 to 1, very objective to very subjective">Subjectivity</th>
                     </tr>
                 </thead>
                 <tbody id="top-tweets-body">
                     {% for tweet in top_tweets %}
                     <tr>
-                        <td>{{ tweet.id_str }}</td>
+                        <td>{{ tweet.date }}</td>
                         <td class="text-cell">{{ tweet.text }}</td>
                         <td>{{ tweet.favorite_count | format_number }}</td>
                         <td>{{ tweet.retweet_count | format_number }}</td>
-                        <td>{{ tweet.date }}</td>
+                        <td>{{ "%.2f"|format(tweet.sentiment_polarity) if tweet.sentiment_polarity is not none else 'N/A' }}</td>
+                        <td>{{ "%.2f"|format(tweet.sentiment_subjectivity) if tweet.sentiment_subjectivity is not none else 'N/A' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -870,20 +872,22 @@ RESULTS_CONTENT = """
                 <thead>
                     <tr>
                         <th>Type</th>
-                        <th>ID</th>
                         <th>Date</th>
                         <th>Text</th>
                         <th>Source</th>
+                        <th title="Sentiment Analysis with TextBlob's default settings. The polarity score goes from -1.0 to 1.0 for Negative to Positive">Polarity</th>
+                        <th title="Sentiment Analysis with TextBlob's default settings. The Subjectivity score goes from 0 to 1, very objective to very subjective">Subjectivity</th>
                     </tr>
                 </thead>
                 <tbody id="data-preview-body">
                     {% for row in preview_data %}
                     <tr>
                         <td>{{ row.record_type }}</td>
-                        <td>{{ row.id_str }}</td>
                         <td>{{ row.date }}</td>
                         <td class="text-cell">{{ row.text }}</td>
                         <td>{{ row.source }}</td>
+                        <td>{{ "%.2f"|format(row.sentiment_polarity) if row.sentiment_polarity is not none else 'N/A' }}</td>
+                        <td>{{ "%.2f"|format(row.sentiment_subjectivity) if row.sentiment_subjectivity is not none else 'N/A' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -1132,12 +1136,15 @@ document.addEventListener('DOMContentLoaded', function() {
         tbody.innerHTML = '';
         tweets.forEach(tweet => {
             const row = document.createElement('tr');
+            const polarity = tweet.sentiment_polarity != null ? tweet.sentiment_polarity.toFixed(2) : 'N/A';
+            const subjectivity = tweet.sentiment_subjectivity != null ? tweet.sentiment_subjectivity.toFixed(2) : 'N/A';
             row.innerHTML = `
-                <td>${escapeHtml(tweet.id_str)}</td>
+                <td>${escapeHtml(tweet.date)}</td>
                 <td class="text-cell">${escapeHtml(tweet.text)}</td>
                 <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
                 <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
-                <td>${escapeHtml(tweet.date)}</td>
+                <td>${escapeHtml(polarity)}</td>
+                <td>${escapeHtml(subjectivity)}</td>
             `;
             tbody.appendChild(row);
         });
@@ -1159,12 +1166,15 @@ document.addEventListener('DOMContentLoaded', function() {
         tbody.innerHTML = '';
         records.forEach(record => {
             const row = document.createElement('tr');
+            const polarity = record.sentiment_polarity != null ? record.sentiment_polarity.toFixed(2) : 'N/A';
+            const subjectivity = record.sentiment_subjectivity != null ? record.sentiment_subjectivity.toFixed(2) : 'N/A';
             row.innerHTML = `
                 <td>${escapeHtml(record.record_type)}</td>
-                <td>${escapeHtml(record.id_str)}</td>
                 <td>${escapeHtml(record.date)}</td>
                 <td class="text-cell">${escapeHtml(record.text)}</td>
                 <td>${escapeHtml(record.source)}</td>
+                <td>${escapeHtml(polarity)}</td>
+                <td>${escapeHtml(subjectivity)}</td>
             `;
             tbody.appendChild(row);
         });
@@ -1231,12 +1241,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.tweets && data.tweets.length > 0) {
                     data.tweets.forEach(tweet => {
                         const row = document.createElement('tr');
+                        const polarity = tweet.sentiment_polarity != null ? tweet.sentiment_polarity.toFixed(2) : 'N/A';
+                        const subjectivity = tweet.sentiment_subjectivity != null ? tweet.sentiment_subjectivity.toFixed(2) : 'N/A';
                         row.innerHTML = `
-                            <td>${escapeHtml(tweet.id_str)}</td>
+                            <td>${escapeHtml(tweet.date)}</td>
                             <td class="text-cell">${escapeHtml(tweet.text)}</td>
                             <td>${escapeHtml(tweet.favorite_count.toLocaleString())}</td>
                             <td>${escapeHtml(tweet.retweet_count.toLocaleString())}</td>
-                            <td>${escapeHtml(tweet.date)}</td>
+                            <td>${escapeHtml(polarity)}</td>
+                            <td>${escapeHtml(subjectivity)}</td>
                         `;
                         tbody.appendChild(row);
                     });
@@ -1285,12 +1298,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.records && data.records.length > 0) {
                     data.records.forEach(record => {
                         const row = document.createElement('tr');
+                        const polarity = record.sentiment_polarity != null ? record.sentiment_polarity.toFixed(2) : 'N/A';
+                        const subjectivity = record.sentiment_subjectivity != null ? record.sentiment_subjectivity.toFixed(2) : 'N/A';
                         row.innerHTML = `
                             <td>${escapeHtml(record.record_type)}</td>
-                            <td>${escapeHtml(record.id_str)}</td>
                             <td>${escapeHtml(record.date)}</td>
                             <td class="text-cell">${escapeHtml(record.text)}</td>
                             <td>${escapeHtml(record.source)}</td>
+                            <td>${escapeHtml(polarity)}</td>
+                            <td>${escapeHtml(subjectivity)}</td>
                         `;
                         tbody.appendChild(row);
                     });
@@ -1499,11 +1515,12 @@ def results():
             )
             top_tweets.append(
                 {
-                    "id_str": row.get("id_str", ""),
                     "text": row.get("text", ""),
                     "favorite_count": row.get("favorite_count", 0),
                     "retweet_count": row.get("retweet_count", 0) or 0,
                     "date": date_str,
+                    "sentiment_polarity": row.get("sentiment_polarity"),
+                    "sentiment_subjectivity": row.get("sentiment_subjectivity"),
                 }
             )
 
@@ -1518,10 +1535,11 @@ def results():
         preview_data.append(
             {
                 "record_type": row.get("record_type", ""),
-                "id_str": row.get("id_str", ""),
                 "date": date_str,
                 "text": row.get("text", "") or "",
                 "source": row.get("source", "") or "",
+                "sentiment_polarity": row.get("sentiment_polarity"),
+                "sentiment_subjectivity": row.get("sentiment_subjectivity"),
             }
         )
 
@@ -1609,11 +1627,12 @@ def api_filter_data():
             )
             top_tweets.append(
                 {
-                    "id_str": row.get("id_str", ""),
                     "text": row.get("text", ""),
                     "favorite_count": row.get("favorite_count", 0),
                     "retweet_count": row.get("retweet_count", 0) or 0,
                     "date": date_str,
+                    "sentiment_polarity": row.get("sentiment_polarity"),
+                    "sentiment_subjectivity": row.get("sentiment_subjectivity"),
                 }
             )
     
@@ -1628,10 +1647,11 @@ def api_filter_data():
         preview_data.append(
             {
                 "record_type": row.get("record_type", ""),
-                "id_str": row.get("id_str", ""),
                 "date": date_str,
                 "text": row.get("text", "") or "",
                 "source": row.get("source", "") or "",
+                "sentiment_polarity": row.get("sentiment_polarity"),
+                "sentiment_subjectivity": row.get("sentiment_subjectivity"),
             }
         )
     
@@ -1694,11 +1714,12 @@ def api_top_tweets():
             )
             top_tweets.append(
                 {
-                    "id_str": row.get("id_str", ""),
                     "text": row.get("text", ""),
                     "favorite_count": row.get("favorite_count", 0),
                     "retweet_count": row.get("retweet_count", 0) or 0,
                     "date": date_str,
+                    "sentiment_polarity": row.get("sentiment_polarity"),
+                    "sentiment_subjectivity": row.get("sentiment_subjectivity"),
                 }
             )
         
@@ -1750,10 +1771,11 @@ def api_data_preview():
         preview_data.append(
             {
                 "record_type": row.get("record_type", ""),
-                "id_str": row.get("id_str", ""),
                 "date": date_str,
                 "text": row.get("text", "") or "",
                 "source": row.get("source", "") or "",
+                "sentiment_polarity": row.get("sentiment_polarity"),
+                "sentiment_subjectivity": row.get("sentiment_subjectivity"),
             }
         )
     
