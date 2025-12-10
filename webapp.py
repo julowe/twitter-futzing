@@ -1824,6 +1824,18 @@ def download():
             # Unexpected error with kaleido
             print(f"Warning: Could not generate PNG images: {e}")
         
+        # Generate and add word cloud image
+        try:
+            wc = generate_wordcloud(df)
+            if wc:
+                wc_img_io = io.BytesIO()
+                wc.to_image().save(wc_img_io, 'PNG')
+                wc_img_io.seek(0)
+                zip_file.writestr(f"wordcloud_{timestamp}.png", wc_img_io.getvalue())
+                print("✓ Word cloud image added to ZIP")
+        except Exception as wc_error:
+            print(f"Warning: Could not generate word cloud: {wc_error}")
+        
         # Generate Markdown report (reusing CLI function)
         md_report = generate_markdown_report(df, summary_text, image_names, timestamp)
         zip_file.writestr(f"report_{timestamp}.md", md_report)
