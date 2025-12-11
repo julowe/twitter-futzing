@@ -1362,6 +1362,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Helper function to clear filter field values
+    function clearFilterFieldValues() {
+        const fieldIds = [
+            'filter-datetime-after',
+            'filter-datetime-before',
+            'filter-and-words',
+            'filter-or-words',
+            'filter-polarity-min',
+            'filter-polarity-max',
+            'filter-subjectivity-min',
+            'filter-subjectivity-max'
+        ];
+        
+        fieldIds.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.value = '';
+            }
+        });
+    }
+    
     function clearFilters() {
         const datetimeAfterInput = document.getElementById('filter-datetime-after');
         const datetimeBeforeInput = document.getElementById('filter-datetime-before');
@@ -1371,26 +1392,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const subjectivityMaxInput = document.getElementById('filter-subjectivity-max');
         const filterStatus = document.getElementById('filter-status');
         
-        datetimeAfterInput.value = '';
-        datetimeBeforeInput.value = '';
-        document.getElementById('filter-and-words').value = '';
-        document.getElementById('filter-or-words').value = '';
-        polarityMinInput.value = '';
-        polarityMaxInput.value = '';
-        subjectivityMinInput.value = '';
-        subjectivityMaxInput.value = '';
+        // Clear all field values
+        clearFilterFieldValues();
         
         // Reset border colors
-        datetimeAfterInput.style.borderColor = '#ddd';
-        datetimeBeforeInput.style.borderColor = '#ddd';
-        polarityMinInput.style.borderColor = '#ddd';
-        polarityMaxInput.style.borderColor = '#ddd';
-        subjectivityMinInput.style.borderColor = '#ddd';
-        subjectivityMaxInput.style.borderColor = '#ddd';
+        if (datetimeAfterInput) datetimeAfterInput.style.borderColor = '#ddd';
+        if (datetimeBeforeInput) datetimeBeforeInput.style.borderColor = '#ddd';
+        if (polarityMinInput) polarityMinInput.style.borderColor = '#ddd';
+        if (polarityMaxInput) polarityMaxInput.style.borderColor = '#ddd';
+        if (subjectivityMinInput) subjectivityMinInput.style.borderColor = '#ddd';
+        if (subjectivityMaxInput) subjectivityMaxInput.style.borderColor = '#ddd';
         
         // Reset status
-        filterStatus.textContent = '';
-        filterStatus.style.color = '#666';
+        if (filterStatus) {
+            filterStatus.textContent = '';
+            filterStatus.style.color = '#666';
+        }
         
         currentFilters = {
             datetime_after: null,
@@ -1409,6 +1426,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Attach event listeners
     document.getElementById('apply-filters').addEventListener('click', applyFilters);
     document.getElementById('clear-filters').addEventListener('click', clearFilters);
+    
+    // Initialize filter fields to empty on page load to prevent cached values from showing
+    // This ensures fields match the actual filter state (no filters applied initially)
+    clearFilterFieldValues();
     
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');

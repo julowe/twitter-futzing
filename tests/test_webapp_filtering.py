@@ -207,6 +207,35 @@ def test_filter_data_invalid_datetime_format(client, mock_session_data):
     assert data['stats']['total_records'] == 3
 
 
+def test_results_page_clears_filter_fields(client, mock_session_data):
+    """Test that results page includes JavaScript to clear filter fields on load."""
+    session_id = mock_session_data
+    
+    response = client.get(f'/session/{session_id}/results')
+    assert response.status_code == 200
+    
+    html_content = response.data.decode('utf-8')
+    
+    # Verify that the clearFilterFieldValues function is present
+    assert "function clearFilterFieldValues()" in html_content
+    
+    # Verify that the function is called on page load
+    assert "clearFilterFieldValues();" in html_content
+    
+    # Verify the comment explaining why we clear fields
+    assert "Initialize filter fields to empty on page load" in html_content
+    
+    # Verify the function includes all filter field IDs
+    assert "'filter-datetime-after'" in html_content
+    assert "'filter-datetime-before'" in html_content
+    assert "'filter-and-words'" in html_content
+    assert "'filter-or-words'" in html_content
+    assert "'filter-polarity-min'" in html_content
+    assert "'filter-polarity-max'" in html_content
+    assert "'filter-subjectivity-min'" in html_content
+    assert "'filter-subjectivity-max'" in html_content
+
+
 def main():
     """Run all tests using pytest."""
     # Run pytest with verbose output
