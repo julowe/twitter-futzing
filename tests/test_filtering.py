@@ -256,6 +256,173 @@ def test_filter_with_real_data():
     print(f"✓ test_filter_with_real_data passed - tested {original_count} real tweets")
 
 
+def create_test_dataframe_with_sentiment():
+    """Create a test DataFrame with sentiment data."""
+    data = [
+        {
+            "record_type": "tweet",
+            "id_str": "1",
+            "created_at": pd.Timestamp("2023-01-15 10:00:00", tz="UTC"),
+            "text": "I love this wonderful beautiful amazing day!",
+            "sentiment_polarity": 0.8,
+            "sentiment_subjectivity": 0.9,
+        },
+        {
+            "record_type": "tweet",
+            "id_str": "2",
+            "created_at": pd.Timestamp("2023-02-20 15:30:00", tz="UTC"),
+            "text": "This is terrible, awful, and horrible",
+            "sentiment_polarity": -0.7,
+            "sentiment_subjectivity": 0.8,
+        },
+        {
+            "record_type": "tweet",
+            "id_str": "3",
+            "created_at": pd.Timestamp("2023-03-10 08:45:00", tz="UTC"),
+            "text": "The sky is blue",
+            "sentiment_polarity": 0.0,
+            "sentiment_subjectivity": 0.1,
+        },
+        {
+            "record_type": "tweet",
+            "id_str": "4",
+            "created_at": pd.Timestamp("2023-04-05 12:00:00", tz="UTC"),
+            "text": "I think this might be okay",
+            "sentiment_polarity": 0.3,
+            "sentiment_subjectivity": 0.5,
+        },
+        {
+            "record_type": "tweet",
+            "id_str": "5",
+            "created_at": pd.Timestamp("2023-05-01 09:15:00", tz="UTC"),
+            "text": "I hate this bad thing",
+            "sentiment_polarity": -0.5,
+            "sentiment_subjectivity": 0.6,
+        },
+        {
+            "record_type": "tweet",
+            "id_str": "6",
+            "created_at": pd.Timestamp("2023-06-15 14:20:00", tz="UTC"),
+            "text": "The temperature is 20 degrees",
+            "sentiment_polarity": 0.0,
+            "sentiment_subjectivity": 0.0,
+        },
+    ]
+    return pd.DataFrame(data)
+
+
+def test_filter_polarity_min():
+    """Test filtering by minimum polarity."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for positive tweets (polarity >= 0.5)
+    filtered = filter_dataframe(df, polarity_min=0.5)
+    
+    # Should only match tweet 1 (polarity 0.8)
+    assert len(filtered) == 1, f"Expected 1 tweet, got {len(filtered)}"
+    assert filtered.iloc[0]["id_str"] == "1", "Should be the most positive tweet"
+    
+    print("✓ test_filter_polarity_min passed")
+
+
+def test_filter_polarity_max():
+    """Test filtering by maximum polarity."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for negative tweets (polarity <= -0.5)
+    filtered = filter_dataframe(df, polarity_max=-0.5)
+    
+    # Should match tweets 2 and 5
+    assert len(filtered) == 2, f"Expected 2 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"2", "5"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_polarity_max passed")
+
+
+def test_filter_polarity_range():
+    """Test filtering by polarity range."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for neutral tweets (-0.3 <= polarity <= 0.3)
+    filtered = filter_dataframe(df, polarity_min=-0.3, polarity_max=0.3)
+    
+    # Should match tweets 3, 4, and 6
+    assert len(filtered) == 3, f"Expected 3 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"3", "4", "6"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_polarity_range passed")
+
+
+def test_filter_subjectivity_min():
+    """Test filtering by minimum subjectivity."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for highly subjective tweets (subjectivity >= 0.8)
+    filtered = filter_dataframe(df, subjectivity_min=0.8)
+    
+    # Should match tweets 1 and 2
+    assert len(filtered) == 2, f"Expected 2 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"1", "2"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_subjectivity_min passed")
+
+
+def test_filter_subjectivity_max():
+    """Test filtering by maximum subjectivity."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for objective tweets (subjectivity <= 0.1)
+    filtered = filter_dataframe(df, subjectivity_max=0.1)
+    
+    # Should match tweets 3 and 6
+    assert len(filtered) == 2, f"Expected 2 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"3", "6"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_subjectivity_max passed")
+
+
+def test_filter_subjectivity_range():
+    """Test filtering by subjectivity range."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for moderately subjective tweets (0.5 <= subjectivity <= 0.7)
+    filtered = filter_dataframe(df, subjectivity_min=0.5, subjectivity_max=0.7)
+    
+    # Should match tweets 4 and 5
+    assert len(filtered) == 2, f"Expected 2 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"4", "5"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_subjectivity_range passed")
+
+
+def test_filter_sentiment_combined():
+    """Test filtering by both polarity and subjectivity."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for positive AND highly subjective tweets
+    filtered = filter_dataframe(df, polarity_min=0.5, subjectivity_min=0.8)
+    
+    # Should only match tweet 1
+    assert len(filtered) == 1, f"Expected 1 tweet, got {len(filtered)}"
+    assert filtered.iloc[0]["id_str"] == "1", "Should be the positive and subjective tweet"
+    
+    print("✓ test_filter_sentiment_combined passed")
+
+
+def test_filter_sentiment_with_text():
+    """Test combining sentiment filters with text filters."""
+    df = create_test_dataframe_with_sentiment()
+    
+    # Filter for negative tweets (polarity < 0) containing "this"
+    filtered = filter_dataframe(df, polarity_max=-0.1, filter_or=["this"])
+    
+    # Should match tweets 2 and 5
+    assert len(filtered) == 2, f"Expected 2 tweets, got {len(filtered)}"
+    assert set(filtered["id_str"]) == {"2", "5"}, f"Unexpected tweets: {set(filtered['id_str'])}"
+    
+    print("✓ test_filter_sentiment_with_text passed")
+
+
 def main():
     """Run all tests."""
     print("=" * 70)
@@ -274,6 +441,14 @@ def main():
         test_filter_empty_dataframe,
         test_filter_no_matches,
         test_filter_with_real_data,
+        test_filter_polarity_min,
+        test_filter_polarity_max,
+        test_filter_polarity_range,
+        test_filter_subjectivity_min,
+        test_filter_subjectivity_max,
+        test_filter_subjectivity_range,
+        test_filter_sentiment_combined,
+        test_filter_sentiment_with_text,
     ]
     
     failed = []

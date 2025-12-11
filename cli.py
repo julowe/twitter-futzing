@@ -352,8 +352,67 @@ Examples:
         metavar="DATETIME",
         help='Filter tweets created on or before this datetime (ISO format without seconds, e.g., "2023-12-31T23:59"). If no timezone specified, local timezone is used.',
     )
+    parser.add_argument(
+        "--filter-polarity-min",
+        dest="polarity_min",
+        type=float,
+        metavar="VALUE",
+        help='Filter tweets with sentiment polarity greater than or equal to this value (range: -1.0 to 1.0, where -1.0 is most negative, 1.0 is most positive).',
+    )
+    parser.add_argument(
+        "--filter-polarity-max",
+        dest="polarity_max",
+        type=float,
+        metavar="VALUE",
+        help='Filter tweets with sentiment polarity less than or equal to this value (range: -1.0 to 1.0, where -1.0 is most negative, 1.0 is most positive).',
+    )
+    parser.add_argument(
+        "--filter-subjectivity-min",
+        dest="subjectivity_min",
+        type=float,
+        metavar="VALUE",
+        help='Filter tweets with sentiment subjectivity greater than or equal to this value (range: 0.0 to 1.0, where 0.0 is most objective, 1.0 is most subjective).',
+    )
+    parser.add_argument(
+        "--filter-subjectivity-max",
+        dest="subjectivity_max",
+        type=float,
+        metavar="VALUE",
+        help='Filter tweets with sentiment subjectivity less than or equal to this value (range: 0.0 to 1.0, where 0.0 is most objective, 1.0 is most subjective).',
+    )
 
     args = parser.parse_args()
+
+    # Validate sentiment filter arguments
+    if args.polarity_min is not None:
+        if args.polarity_min < -1.0 or args.polarity_min > 1.0:
+            print("Error: --filter-polarity-min must be between -1.0 and 1.0", file=sys.stderr)
+            sys.exit(1)
+
+    if args.polarity_max is not None:
+        if args.polarity_max < -1.0 or args.polarity_max > 1.0:
+            print("Error: --filter-polarity-max must be between -1.0 and 1.0", file=sys.stderr)
+            sys.exit(1)
+
+    if args.polarity_min is not None and args.polarity_max is not None:
+        if args.polarity_min > args.polarity_max:
+            print("Error: --filter-polarity-min cannot be greater than --filter-polarity-max", file=sys.stderr)
+            sys.exit(1)
+
+    if args.subjectivity_min is not None:
+        if args.subjectivity_min < 0.0 or args.subjectivity_min > 1.0:
+            print("Error: --filter-subjectivity-min must be between 0.0 and 1.0", file=sys.stderr)
+            sys.exit(1)
+
+    if args.subjectivity_max is not None:
+        if args.subjectivity_max < 0.0 or args.subjectivity_max > 1.0:
+            print("Error: --filter-subjectivity-max must be between 0.0 and 1.0", file=sys.stderr)
+            sys.exit(1)
+
+    if args.subjectivity_min is not None and args.subjectivity_max is not None:
+        if args.subjectivity_min > args.subjectivity_max:
+            print("Error: --filter-subjectivity-min cannot be greater than --filter-subjectivity-max", file=sys.stderr)
+            sys.exit(1)
 
     # Load files
     print(f"Loading {len(args.files)} file(s)...")
@@ -416,6 +475,12 @@ Examples:
     if args.filter_and or args.filter_or:
         filter_applied = True
 
+    if args.polarity_min is not None or args.polarity_max is not None:
+        filter_applied = True
+
+    if args.subjectivity_min is not None or args.subjectivity_max is not None:
+        filter_applied = True
+
     if filter_applied:
         from twitter_analyzer.core import filter_dataframe
         
@@ -426,6 +491,10 @@ Examples:
             filter_or=args.filter_or,
             datetime_after=datetime_after,
             datetime_before=datetime_before,
+            polarity_min=args.polarity_min,
+            polarity_max=args.polarity_max,
+            subjectivity_min=args.subjectivity_min,
+            subjectivity_max=args.subjectivity_max,
         )
         
         if df.empty:
@@ -443,6 +512,14 @@ Examples:
                 print(f"  - After: {datetime_after}")
             if datetime_before:
                 print(f"  - Before: {datetime_before}")
+            if args.polarity_min is not None:
+                print(f"  - Polarity min: {args.polarity_min}")
+            if args.polarity_max is not None:
+                print(f"  - Polarity max: {args.polarity_max}")
+            if args.subjectivity_min is not None:
+                print(f"  - Subjectivity min: {args.subjectivity_min}")
+            if args.subjectivity_max is not None:
+                print(f"  - Subjectivity max: {args.subjectivity_max}")
 
     # Generate summary
     summary = summarize(df)

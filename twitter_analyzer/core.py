@@ -428,8 +428,12 @@ def filter_dataframe(
     filter_or: Optional[List[str]] = None,
     datetime_after: Optional[datetime] = None,
     datetime_before: Optional[datetime] = None,
+    polarity_min: Optional[float] = None,
+    polarity_max: Optional[float] = None,
+    subjectivity_min: Optional[float] = None,
+    subjectivity_max: Optional[float] = None,
 ) -> pd.DataFrame:
-    """Filter DataFrame based on text and datetime criteria.
+    """Filter DataFrame based on text, datetime, and sentiment criteria.
 
     Args:
         df: DataFrame to filter.
@@ -437,6 +441,10 @@ def filter_dataframe(
         filter_or: List of words where AT LEAST ONE must be present in the text (case-insensitive).
         datetime_after: Only include records created on or after this datetime.
         datetime_before: Only include records created on or before this datetime.
+        polarity_min: Minimum sentiment polarity (-1.0 to 1.0).
+        polarity_max: Maximum sentiment polarity (-1.0 to 1.0).
+        subjectivity_min: Minimum sentiment subjectivity (0.0 to 1.0).
+        subjectivity_max: Maximum sentiment subjectivity (0.0 to 1.0).
 
     Returns:
         Filtered DataFrame.
@@ -447,6 +455,9 @@ def filter_dataframe(
         
         # Filter for tweets after a specific date
         filter_dataframe(df, datetime_after=datetime(2023, 1, 1, tzinfo=timezone.utc))
+        
+        # Filter for positive tweets with high subjectivity
+        filter_dataframe(df, polarity_min=0.5, subjectivity_min=0.5)
     """
     if df.empty:
         return df
@@ -491,6 +502,28 @@ def filter_dataframe(
 
         # If only AND or only OR was specified, use that; otherwise use the combined OR logic
         filtered_df = filtered_df[final_mask]
+
+    # Apply sentiment polarity filters
+    if polarity_min is not None and "sentiment_polarity" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["sentiment_polarity"].notna() & (filtered_df["sentiment_polarity"] >= polarity_min)
+        ]
+
+    if polarity_max is not None and "sentiment_polarity" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["sentiment_polarity"].notna() & (filtered_df["sentiment_polarity"] <= polarity_max)
+        ]
+
+    # Apply sentiment subjectivity filters
+    if subjectivity_min is not None and "sentiment_subjectivity" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["sentiment_subjectivity"].notna() & (filtered_df["sentiment_subjectivity"] >= subjectivity_min)
+        ]
+
+    if subjectivity_max is not None and "sentiment_subjectivity" in filtered_df.columns:
+        filtered_df = filtered_df[
+            filtered_df["sentiment_subjectivity"].notna() & (filtered_df["sentiment_subjectivity"] <= subjectivity_max)
+        ]
 
     return filtered_df
 
