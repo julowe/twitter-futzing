@@ -241,6 +241,146 @@ def create_sentiment_over_time_chart(df: pd.DataFrame) -> Optional[go.Figure]:
     return fig
 
 
+def create_weekly_avg_sentiment_chart(df: pd.DataFrame) -> Optional[go.Figure]:
+    """Create a chart of average sentiment polarity and subjectivity per week.
+    
+    Weeks are Monday to Sunday.
+    
+    Args:
+        df: DataFrame with Twitter data.
+        
+    Returns:
+        Plotly Figure or None if no sentiment/date data available.
+    """
+    if "sentiment_polarity" not in df.columns or "sentiment_subjectivity" not in df.columns:
+        return None
+    if "created_at" not in df.columns or not df["created_at"].notna().any():
+        return None
+    
+    # Filter to rows with valid data
+    df_valid = df.dropna(subset=["created_at", "sentiment_polarity", "sentiment_subjectivity"]).copy()
+    
+    if df_valid.empty:
+        return None
+    
+    # Resample to weekly average (W-MON means week ending on Monday)
+    df_valid = df_valid.set_index("created_at")
+    weekly_polarity = df_valid.resample("W-MON")["sentiment_polarity"].mean().reset_index()
+    weekly_subjectivity = df_valid.resample("W-MON")["sentiment_subjectivity"].mean().reset_index()
+    
+    if weekly_polarity.empty or weekly_subjectivity.empty:
+        return None
+    
+    # Create figure with secondary y-axis
+    fig = go.Figure()
+    
+    # Add polarity trace
+    fig.add_trace(
+        go.Scatter(
+            x=weekly_polarity["created_at"],
+            y=weekly_polarity["sentiment_polarity"],
+            name="Polarity",
+            mode="lines+markers",
+            line=dict(color="#636EFA"),
+        )
+    )
+    
+    # Add subjectivity trace
+    fig.add_trace(
+        go.Scatter(
+            x=weekly_subjectivity["created_at"],
+            y=weekly_subjectivity["sentiment_subjectivity"],
+            name="Subjectivity",
+            mode="lines+markers",
+            line=dict(color="#EF553B"),
+            yaxis="y2",
+        )
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title="Weekly Average Sentiment (Monday-Sunday)",
+        xaxis=dict(title="Week Ending"),
+        yaxis=dict(
+            title=dict(text="Polarity", font=dict(color="#636EFA")),
+            tickfont=dict(color="#636EFA"),
+            range=[-1, 1],
+        ),
+        yaxis2=dict(
+            title=dict(text="Subjectivity", font=dict(color="#EF553B")),
+            tickfont=dict(color="#EF553B"),
+            overlaying="y",
+            side="right",
+            range=[0, 1],
+        ),
+        hovermode="x unified",
+    )
+    
+    # Add reference lines
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    
+    return fig
+
+
+def create_all_tweets_sentiment_chart(df: pd.DataFrame, zoom_to_last_n_days: Optional[int] = None) -> Optional[go.Figure]:
+    """Create a chart plotting every tweet's sentiment polarity over time.
+    
+    This chart shows individual tweet polarity as a line without markers.
+    
+    Args:
+        df: DataFrame with Twitter data.
+        zoom_to_last_n_days: If provided, zoom the chart to the last N days.
+        
+    Returns:
+        Plotly Figure or None if no sentiment/date data available.
+    """
+    if "sentiment_polarity" not in df.columns or "created_at" not in df.columns:
+        return None
+    
+    if not df["created_at"].notna().any():
+        return None
+    
+    # Filter to rows with valid data and sort by date
+    df_valid = df.dropna(subset=["created_at", "sentiment_polarity"]).copy()
+    
+    if df_valid.empty:
+        return None
+    
+    df_valid = df_valid.sort_values("created_at")
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    fig.add_trace(
+        go.Scatter(
+            x=df_valid["created_at"],
+            y=df_valid["sentiment_polarity"],
+            mode="lines",  # No markers, just lines
+            name="Polarity",
+            line=dict(color="#636EFA", width=1),
+        )
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title="Sentiment Polarity of All Tweets",
+        xaxis=dict(title="Date"),
+        yaxis=dict(title="Polarity", range=[-1, 1]),
+        hovermode="x unified",
+    )
+    
+    # Add reference line at 0
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    
+    # If zoom is requested, set the x-axis range
+    if zoom_to_last_n_days is not None and not df_valid.empty:
+        latest_date = df_valid["created_at"].max()
+        start_date = latest_date - pd.Timedelta(days=zoom_to_last_n_days)
+        fig.update_xaxes(range=[start_date, latest_date])
+    
+    return fig
+
+
 def generate_all_charts(df: pd.DataFrame) -> Dict[str, Optional[go.Figure]]:
     """Generate all available charts for the data.
 
@@ -259,6 +399,8 @@ def generate_all_charts(df: pd.DataFrame) -> Dict[str, Optional[go.Figure]]:
         "day_of_week": create_day_of_week_chart(df),
         "sentiment_counts": create_sentiment_counts_chart(df),
         "sentiment_over_time": create_sentiment_over_time_chart(df),
+        "sentiment_weekly_avg": create_weekly_avg_sentiment_chart(df),
+        "sentiment_all_tweets": create_all_tweets_sentiment_chart(df),
     }
 
 
