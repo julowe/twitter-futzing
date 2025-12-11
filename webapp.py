@@ -794,24 +794,24 @@ RESULTS_CONTENT = """
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div>
                         <label for="filter-polarity-min" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Minimum sentiment polarity: -1.0 (most negative) to 1.0 (most positive)">Polarity Min:</label>
-                        <input type="number" id="filter-polarity-min" class="filter-input" placeholder="e.g., -1.0 to 1.0" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
+                        <input type="number" id="filter-polarity-min" class="filter-input" placeholder="e.g., -0.5" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
                         <small style="color: #666;">Range: -1.0 (negative) to 1.0 (positive)</small>
                     </div>
                     <div>
                         <label for="filter-polarity-max" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Maximum sentiment polarity: -1.0 (most negative) to 1.0 (most positive)">Polarity Max:</label>
-                        <input type="number" id="filter-polarity-max" class="filter-input" placeholder="e.g., -1.0 to 1.0" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
+                        <input type="number" id="filter-polarity-max" class="filter-input" placeholder="e.g., 0.5" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
                         <small style="color: #666;">Range: -1.0 (negative) to 1.0 (positive)</small>
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div>
                         <label for="filter-subjectivity-min" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Minimum sentiment subjectivity: 0.0 (most objective) to 1.0 (most subjective)">Subjectivity Min:</label>
-                        <input type="number" id="filter-subjectivity-min" class="filter-input" placeholder="e.g., 0.0 to 1.0" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
+                        <input type="number" id="filter-subjectivity-min" class="filter-input" placeholder="e.g., 0.3" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
                         <small style="color: #666;">Range: 0.0 (objective) to 1.0 (subjective)</small>
                     </div>
                     <div>
                         <label for="filter-subjectivity-max" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Maximum sentiment subjectivity: 0.0 (most objective) to 1.0 (most subjective)">Subjectivity Max:</label>
-                        <input type="number" id="filter-subjectivity-max" class="filter-input" placeholder="e.g., 0.0 to 1.0" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
+                        <input type="number" id="filter-subjectivity-max" class="filter-input" placeholder="e.g., 0.7" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
                         <small style="color: #666;">Range: 0.0 (objective) to 1.0 (subjective)</small>
                     </div>
                 </div>
@@ -1617,6 +1617,19 @@ def parse_filter_params():
                 filters["subjectivity_max"] = subjectivity_max
         except (ValueError, TypeError):
             pass
+    
+    # Validate min/max relationships
+    if "polarity_min" in filters and "polarity_max" in filters:
+        if filters["polarity_min"] > filters["polarity_max"]:
+            # Remove invalid filters
+            del filters["polarity_min"]
+            del filters["polarity_max"]
+    
+    if "subjectivity_min" in filters and "subjectivity_max" in filters:
+        if filters["subjectivity_min"] > filters["subjectivity_max"]:
+            # Remove invalid filters
+            del filters["subjectivity_min"]
+            del filters["subjectivity_max"]
     
     return filters
 
