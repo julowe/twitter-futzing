@@ -42,7 +42,11 @@ from twitter_analyzer.core import (
     get_archive_columns,
     get_analysis_columns,
 )
-from twitter_analyzer.visualizations import generate_all_charts, get_chart_html
+from twitter_analyzer.visualizations import (
+    generate_all_charts,
+    get_chart_html,
+    create_all_tweets_sentiment_chart,
+)
 from twitter_analyzer.analysis import analyze_sentiment, generate_wordcloud
 
 
@@ -1720,6 +1724,12 @@ def results(session_id):
 
     # Generate charts
     charts = generate_all_charts(df)
+    
+    # For web UI, create zoomed version of all_tweets sentiment chart (last 2 months = ~60 days)
+    if "sentiment_all_tweets" in charts and charts["sentiment_all_tweets"] is not None:
+        # Replace with zoomed version
+        charts["sentiment_all_tweets"] = create_all_tweets_sentiment_chart(df, zoom_to_last_n_days=60)
+    
     std_charts_html = ""
     nlp_charts_html = ""
     first_chart = True
@@ -1832,6 +1842,12 @@ def api_filter_data(session_id):
     
     # Generate charts
     charts = generate_all_charts(df)
+    
+    # For web UI, create zoomed version of all_tweets sentiment chart (last 2 months = ~60 days)
+    if "sentiment_all_tweets" in charts and charts["sentiment_all_tweets"] is not None:
+        # Replace with zoomed version
+        charts["sentiment_all_tweets"] = create_all_tweets_sentiment_chart(df, zoom_to_last_n_days=60)
+    
     std_charts_html = ""
     nlp_charts_html = ""
     first_chart = True
