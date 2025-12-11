@@ -1829,7 +1829,10 @@ def results(session_id):
         <script>
         function confirmDelete() {{
             if (confirm('Are you sure you want to delete all your uploaded files and analysis data? This action cannot be undone.')) {{
-                document.getElementById('delete-form').submit();
+                var form = document.getElementById('delete-form');
+                if (form) {{
+                    form.submit();
+                }}
             }}
         }}
         </script>
