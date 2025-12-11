@@ -791,6 +791,30 @@ RESULTS_CONTENT = """
                         <small style="color: #666;">Separate multiple words with commas</small>
                     </div>
                 </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-polarity-min" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Minimum sentiment polarity: -1.0 (most negative) to 1.0 (most positive)">Polarity Min:</label>
+                        <input type="number" id="filter-polarity-min" class="filter-input" placeholder="e.g., -1.0 to 1.0" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
+                        <small style="color: #666;">Range: -1.0 (negative) to 1.0 (positive)</small>
+                    </div>
+                    <div>
+                        <label for="filter-polarity-max" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Maximum sentiment polarity: -1.0 (most negative) to 1.0 (most positive)">Polarity Max:</label>
+                        <input type="number" id="filter-polarity-max" class="filter-input" placeholder="e.g., -1.0 to 1.0" step="0.1" min="-1" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: -1.0 (most negative) to 1.0 (most positive)">
+                        <small style="color: #666;">Range: -1.0 (negative) to 1.0 (positive)</small>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="filter-subjectivity-min" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Minimum sentiment subjectivity: 0.0 (most objective) to 1.0 (most subjective)">Subjectivity Min:</label>
+                        <input type="number" id="filter-subjectivity-min" class="filter-input" placeholder="e.g., 0.0 to 1.0" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
+                        <small style="color: #666;">Range: 0.0 (objective) to 1.0 (subjective)</small>
+                    </div>
+                    <div>
+                        <label for="filter-subjectivity-max" style="display: block; margin-bottom: 5px; font-weight: 500;" title="Maximum sentiment subjectivity: 0.0 (most objective) to 1.0 (most subjective)">Subjectivity Max:</label>
+                        <input type="number" id="filter-subjectivity-max" class="filter-input" placeholder="e.g., 0.0 to 1.0" step="0.1" min="0" max="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" title="Range: 0.0 (most objective) to 1.0 (most subjective)">
+                        <small style="color: #666;">Range: 0.0 (objective) to 1.0 (subjective)</small>
+                    </div>
+                </div>
                 <div style="display: flex; gap: 10px;">
                     <button id="apply-filters" class="btn" style="flex: 0 0 auto;">Apply Filters</button>
                     <button id="clear-filters" class="btn btn-secondary" style="flex: 0 0 auto;">Clear Filters</button>
@@ -956,7 +980,11 @@ document.addEventListener('DOMContentLoaded', function() {
         datetime_after: null,
         datetime_before: null,
         filter_and: null,
-        filter_or: null
+        filter_or: null,
+        polarity_min: null,
+        polarity_max: null,
+        subjectivity_min: null,
+        subjectivity_max: null
     };
     
     function buildFilterParams() {
@@ -973,6 +1001,18 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentFilters.filter_or) {
             params.append('filter_or', currentFilters.filter_or);
         }
+        if (currentFilters.polarity_min !== null) {
+            params.append('polarity_min', currentFilters.polarity_min);
+        }
+        if (currentFilters.polarity_max !== null) {
+            params.append('polarity_max', currentFilters.polarity_max);
+        }
+        if (currentFilters.subjectivity_min !== null) {
+            params.append('subjectivity_min', currentFilters.subjectivity_min);
+        }
+        if (currentFilters.subjectivity_max !== null) {
+            params.append('subjectivity_max', currentFilters.subjectivity_max);
+        }
         return params.toString();
     }
     
@@ -988,6 +1028,62 @@ document.addEventListener('DOMContentLoaded', function() {
         const datetimeBefore = datetimeBeforeInput.value;
         const andWords = document.getElementById('filter-and-words').value;
         const orWords = document.getElementById('filter-or-words').value;
+        
+        // Get sentiment filter values
+        const polarityMinInput = document.getElementById('filter-polarity-min');
+        const polarityMaxInput = document.getElementById('filter-polarity-max');
+        const subjectivityMinInput = document.getElementById('filter-subjectivity-min');
+        const subjectivityMaxInput = document.getElementById('filter-subjectivity-max');
+        
+        const polarityMin = polarityMinInput.value !== '' ? parseFloat(polarityMinInput.value) : null;
+        const polarityMax = polarityMaxInput.value !== '' ? parseFloat(polarityMaxInput.value) : null;
+        const subjectivityMin = subjectivityMinInput.value !== '' ? parseFloat(subjectivityMinInput.value) : null;
+        const subjectivityMax = subjectivityMaxInput.value !== '' ? parseFloat(subjectivityMaxInput.value) : null;
+        
+        // Validate sentiment filter ranges
+        if (polarityMin !== null && (polarityMin < -1.0 || polarityMin > 1.0)) {
+            filterStatus.textContent = 'Error: Polarity Min must be between -1.0 and 1.0';
+            filterStatus.style.color = '#dc2626';
+            polarityMinInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (polarityMax !== null && (polarityMax < -1.0 || polarityMax > 1.0)) {
+            filterStatus.textContent = 'Error: Polarity Max must be between -1.0 and 1.0';
+            filterStatus.style.color = '#dc2626';
+            polarityMaxInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (polarityMin !== null && polarityMax !== null && polarityMin > polarityMax) {
+            filterStatus.textContent = 'Error: Polarity Min cannot be greater than Polarity Max';
+            filterStatus.style.color = '#dc2626';
+            polarityMinInput.style.borderColor = '#dc2626';
+            polarityMaxInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (subjectivityMin !== null && (subjectivityMin < 0.0 || subjectivityMin > 1.0)) {
+            filterStatus.textContent = 'Error: Subjectivity Min must be between 0.0 and 1.0';
+            filterStatus.style.color = '#dc2626';
+            subjectivityMinInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (subjectivityMax !== null && (subjectivityMax < 0.0 || subjectivityMax > 1.0)) {
+            filterStatus.textContent = 'Error: Subjectivity Max must be between 0.0 and 1.0';
+            filterStatus.style.color = '#dc2626';
+            subjectivityMaxInput.style.borderColor = '#dc2626';
+            return;
+        }
+        
+        if (subjectivityMin !== null && subjectivityMax !== null && subjectivityMin > subjectivityMax) {
+            filterStatus.textContent = 'Error: Subjectivity Min cannot be greater than Subjectivity Max';
+            filterStatus.style.color = '#dc2626';
+            subjectivityMinInput.style.borderColor = '#dc2626';
+            subjectivityMaxInput.style.borderColor = '#dc2626';
+            return;
+        }
         
         // Validate datetime inputs
         // datetime-local input returns empty string if invalid or incomplete
@@ -1036,12 +1132,20 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset border colors on successful validation
         datetimeAfterInput.style.borderColor = '#ddd';
         datetimeBeforeInput.style.borderColor = '#ddd';
+        polarityMinInput.style.borderColor = '#ddd';
+        polarityMaxInput.style.borderColor = '#ddd';
+        subjectivityMinInput.style.borderColor = '#ddd';
+        subjectivityMaxInput.style.borderColor = '#ddd';
         
         // Update current filters
         currentFilters.datetime_after = datetimeAfter || null;
         currentFilters.datetime_before = datetimeBefore || null;
         currentFilters.filter_and = andWords || null;
         currentFilters.filter_or = orWords || null;
+        currentFilters.polarity_min = polarityMin;
+        currentFilters.polarity_max = polarityMax;
+        currentFilters.subjectivity_min = subjectivityMin;
+        currentFilters.subjectivity_max = subjectivityMax;
         
         try {
             // Fetch filtered data
@@ -1080,7 +1184,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Update status
-            const hasFilters = datetimeAfter || datetimeBefore || andWords || orWords;
+            const hasFilters = datetimeAfter || datetimeBefore || andWords || orWords || 
+                               polarityMin !== null || polarityMax !== null || 
+                               subjectivityMin !== null || subjectivityMax !== null;
             if (hasFilters) {
                 filterStatus.textContent = `Showing ${data.stats.total_records.toLocaleString()} of ${data.stats.unfiltered_total.toLocaleString()} records`;
                 filterStatus.style.color = '#1da1f2';
@@ -1255,16 +1361,28 @@ document.addEventListener('DOMContentLoaded', function() {
     function clearFilters() {
         const datetimeAfterInput = document.getElementById('filter-datetime-after');
         const datetimeBeforeInput = document.getElementById('filter-datetime-before');
+        const polarityMinInput = document.getElementById('filter-polarity-min');
+        const polarityMaxInput = document.getElementById('filter-polarity-max');
+        const subjectivityMinInput = document.getElementById('filter-subjectivity-min');
+        const subjectivityMaxInput = document.getElementById('filter-subjectivity-max');
         const filterStatus = document.getElementById('filter-status');
         
         datetimeAfterInput.value = '';
         datetimeBeforeInput.value = '';
         document.getElementById('filter-and-words').value = '';
         document.getElementById('filter-or-words').value = '';
+        polarityMinInput.value = '';
+        polarityMaxInput.value = '';
+        subjectivityMinInput.value = '';
+        subjectivityMaxInput.value = '';
         
         // Reset border colors
         datetimeAfterInput.style.borderColor = '#ddd';
         datetimeBeforeInput.style.borderColor = '#ddd';
+        polarityMinInput.style.borderColor = '#ddd';
+        polarityMaxInput.style.borderColor = '#ddd';
+        subjectivityMinInput.style.borderColor = '#ddd';
+        subjectivityMaxInput.style.borderColor = '#ddd';
         
         // Reset status
         filterStatus.textContent = '';
@@ -1274,7 +1392,11 @@ document.addEventListener('DOMContentLoaded', function() {
             datetime_after: null,
             datetime_before: null,
             filter_and: null,
-            filter_or: null
+            filter_or: null,
+            polarity_min: null,
+            polarity_max: null,
+            subjectivity_min: null,
+            subjectivity_max: null
         };
         
         applyFilters();
@@ -1457,6 +1579,44 @@ def parse_filter_params():
     filter_or_str = request.args.get("filter_or")
     if filter_or_str:
         filters["filter_or"] = [w.strip() for w in filter_or_str.split(",") if w.strip()]
+    
+    # Parse sentiment polarity filters
+    polarity_min_str = request.args.get("polarity_min")
+    if polarity_min_str:
+        try:
+            polarity_min = float(polarity_min_str)
+            if -1.0 <= polarity_min <= 1.0:
+                filters["polarity_min"] = polarity_min
+        except (ValueError, TypeError):
+            pass  # Ignore invalid values
+    
+    polarity_max_str = request.args.get("polarity_max")
+    if polarity_max_str:
+        try:
+            polarity_max = float(polarity_max_str)
+            if -1.0 <= polarity_max <= 1.0:
+                filters["polarity_max"] = polarity_max
+        except (ValueError, TypeError):
+            pass
+    
+    # Parse sentiment subjectivity filters
+    subjectivity_min_str = request.args.get("subjectivity_min")
+    if subjectivity_min_str:
+        try:
+            subjectivity_min = float(subjectivity_min_str)
+            if 0.0 <= subjectivity_min <= 1.0:
+                filters["subjectivity_min"] = subjectivity_min
+        except (ValueError, TypeError):
+            pass
+    
+    subjectivity_max_str = request.args.get("subjectivity_max")
+    if subjectivity_max_str:
+        try:
+            subjectivity_max = float(subjectivity_max_str)
+            if 0.0 <= subjectivity_max <= 1.0:
+                filters["subjectivity_max"] = subjectivity_max
+        except (ValueError, TypeError):
+            pass
     
     return filters
 
