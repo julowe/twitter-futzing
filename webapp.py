@@ -133,6 +133,11 @@ app.secret_key = _secret_key
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
+# Session ID configuration
+# Session IDs are generated using secrets.token_hex(SESSION_ID_BYTES)
+# which produces SESSION_ID_BYTES * 2 hex characters
+SESSION_ID_BYTES = 16  # Results in 32-character hex string
+
 # Session data storage directory
 # Uses a shared temporary directory that works across gunicorn workers
 # Security note: pickle is used for efficient DataFrame serialization.
@@ -150,7 +155,8 @@ SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
 def is_valid_session_id(session_id: str) -> bool:
     """Validate session ID to prevent directory traversal attacks."""
     # Only allow hexadecimal characters (from secrets.token_hex), 32 chars length
-    return bool(re.match(r'^[a-f0-9]{32}$', session_id))
+    expected_length = SESSION_ID_BYTES * 2
+    return bool(re.match(rf'^[a-f0-9]{{{expected_length}}}$', session_id))
 
 
 def save_session_data(session_id: str, data: Dict) -> None:
@@ -816,7 +822,7 @@ RESULTS_CONTENT = """
         <div class="card">
             <h2>Word Cloud</h2>
             <div style="text-align: center;">
-                <img src="{{ url_for('get_wordcloud_image') }}" alt="Word Cloud" style="max-width: 100%; height: auto; border-radius: 8px;">
+                <img id="wordcloud-img" src="{{ url_for('get_wordcloud_image', session_id=session_id) }}" alt="Word Cloud" style="max-width: 100%; height: auto; border-radius: 8px;">
             </div>
         </div>
         <div id="nlp-charts-container">
@@ -903,6 +909,7 @@ RESULTS_CONTENT = """
 RESULTS_SCRIPTS = r"""
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const sessionId = {{ session_id | tojson }};
     const tabs = document.querySelectorAll('.tab');
     const contents = document.querySelectorAll('.tab-content');
     
@@ -1039,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // Fetch filtered data
             const filterParams = buildFilterParams();
-            const response = await fetch(`/api/filter-data?${filterParams}`);
+            const response = await fetch(`/session/${sessionId}/api/filter-data?${filterParams}`);
             const data = await response.json();
             
             if (data.error) {
@@ -1062,6 +1069,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Update data preview
             updateDataPreview(data.preview_data);
+            
+            // Update wordcloud with filter parameters
+            const wordcloudImg = document.getElementById('wordcloud-img');
+            if (wordcloudImg) {
+                wordcloudImg.src = `/session/${sessionId}/wordcloud.png?${filterParams}&t=${Date.now()}`;
+            }
             
             // Update status
             const hasFilters = datetimeAfter || datetimeBefore || andWords || orWords;
@@ -1234,7 +1247,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             try {
                 const filterParams = buildFilterParams();
-                const url = `/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const url = `/session/${sessionId}/api/top-tweets?offset=${offset}&limit=${tweetsPageSize}${filterParams ? '&' + filterParams : ''}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -1291,7 +1304,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             try {
                 const filterParams = buildFilterParams();
-                const url = `/api/data-preview?offset=${offset}&limit=${dataPageSize}${filterParams ? '&' + filterParams : ''}`;
+                const url = `/session/${sessionId}/api/data-preview?offset=${offset}&limit=${dataPageSize}${filterParams ? '&' + filterParams : ''}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 
@@ -1450,33 +1463,31 @@ def upload():
         # Run sentiment analysis
         df = analyze_sentiment(df)
         
-        # Store in session
-        session_id = secrets.token_hex(16)
-        session["data_id"] = session_id
+        # Store in session with unique ID
+        session_id = secrets.token_hex(SESSION_ID_BYTES)
         save_session_data(session_id, {
             "df": df,
             "timestamp": datetime.now().isoformat(),
         })
 
         flash(f"Successfully processed {len(df):,} records from {len(file_data)} file(s)", "success")
-        return redirect(url_for("results"))
+        return redirect(url_for("results", session_id=session_id))
 
     except Exception as e:
         flash(f"Error processing files: {str(e)}", "error")
         return redirect(url_for("index"))
 
 
-@app.route("/results")
-def results():
+@app.route("/session/<session_id>/results")
+def results(session_id):
     """Render analysis results."""
-    data_id = session.get("data_id")
-    if not data_id:
-        flash("No data available. Please upload files first.", "info")
+    if not is_valid_session_id(session_id):
+        flash("Invalid session ID.", "error")
         return redirect(url_for("index"))
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
-        flash("Session expired. Please upload files again.", "info")
+        flash("Session not found or expired. Please upload files again.", "info")
         return redirect(url_for("index"))
 
     df = data["df"]
@@ -1550,7 +1561,7 @@ def results():
     header_stats = Markup(" | ".join(stats_parts))
     
     # Build header button
-    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a> <a href="{url_for("download")}" class="btn">📥 Download Output Data</a>')
+    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a> <a href="{url_for("download", session_id=session_id)}" class="btn">📥 Download Output Data</a>')
     
     return render_template_string(
         BASE_TEMPLATE,
@@ -1565,19 +1576,19 @@ def results():
             nlp_charts_html=nlp_charts_html,
             top_tweets=top_tweets,
             preview_data=preview_data,
+            session_id=session_id,
         ),
-        scripts=RESULTS_SCRIPTS,
+        scripts=render_template_string(RESULTS_SCRIPTS, session_id=session_id),
     )
 
 
-@app.route("/api/filter-data")
-def api_filter_data():
+@app.route("/session/<session_id>/api/filter-data")
+def api_filter_data(session_id):
     """API endpoint to get filtered data with all components updated."""
-    data_id = session.get("data_id")
-    if not data_id:
-        return jsonify({"error": "No data available"}), 404
+    if not is_valid_session_id(session_id):
+        return jsonify({"error": "Invalid session ID"}), 400
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
@@ -1671,14 +1682,13 @@ def api_filter_data():
     })
 
 
-@app.route("/api/top-tweets")
-def api_top_tweets():
+@app.route("/session/<session_id>/api/top-tweets")
+def api_top_tweets(session_id):
     """API endpoint for paginated top tweets."""
-    data_id = session.get("data_id")
-    if not data_id:
-        return jsonify({"error": "No data available"}), 404
+    if not is_valid_session_id(session_id):
+        return jsonify({"error": "Invalid session ID"}), 400
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
@@ -1732,14 +1742,13 @@ def api_top_tweets():
     return jsonify({"tweets": [], "has_more": False, "total": 0})
 
 
-@app.route("/api/data-preview")
-def api_data_preview():
+@app.route("/session/<session_id>/api/data-preview")
+def api_data_preview(session_id):
     """API endpoint for paginated data preview."""
-    data_id = session.get("data_id")
-    if not data_id:
-        return jsonify({"error": "No data available"}), 404
+    if not is_valid_session_id(session_id):
+        return jsonify({"error": "Invalid session ID"}), 400
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
         return jsonify({"error": "Session expired"}), 404
     
@@ -1786,15 +1795,14 @@ def api_data_preview():
     })
 
 
-@app.route("/download")
-def download():
+@app.route("/session/<session_id>/download")
+def download(session_id):
     """Generate and download a ZIP file containing all output files."""
-    data_id = session.get("data_id")
-    if not data_id:
-        flash("No data available. Please upload files first.", "info")
+    if not is_valid_session_id(session_id):
+        flash("Invalid session ID.", "error")
         return redirect(url_for("index"))
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
         flash("Session expired. Please upload files again.", "info")
         return redirect(url_for("index"))
@@ -1912,14 +1920,13 @@ def health():
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
 
-@app.route("/wordcloud.png")
-def get_wordcloud_image():
+@app.route("/session/<session_id>/wordcloud.png")
+def get_wordcloud_image(session_id):
     """Serve the word cloud image."""
-    data_id = session.get("data_id")
-    if not data_id:
+    if not is_valid_session_id(session_id):
         return "", 404
     
-    data = load_session_data(data_id)
+    data = load_session_data(session_id)
     if not data:
         return "", 404
         

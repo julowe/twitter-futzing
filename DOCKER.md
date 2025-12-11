@@ -109,6 +109,28 @@ docker run -d -p 8080:8080 \
 - `BROWSER_PATH`: Path to Chromium binary (default: /usr/bin/chromium)
 - `CHROMIUM_FLAGS`: Additional flags for Chromium (default: "--disable-dev-shm-usage --no-sandbox --disable-gpu")
 
+## Session Management
+
+The application uses unique session URLs to allow users to access their analysis results:
+
+- When files are uploaded, a unique session ID is generated
+- Users are redirected to `/session/<session_id>/results` to view their analysis
+- This URL can be bookmarked or shared to access the same results later
+- Session data is stored in `/tmp/twitter_analyzer_sessions/`
+- Old session files (>30 days) are automatically deleted every 24 hours
+
+**Note**: Session data is stored in memory/tmpfs and will be lost when the container restarts. For persistent sessions across container restarts, you can mount a volume:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -v twitter-sessions:/tmp/twitter_analyzer_sessions \
+  --name twitter-analyzer \
+  twitter-analyzer
+```
+
+**Security**: Each session ID is a cryptographically random 32-character hexadecimal string. Users cannot access other sessions without the unique URL.
+
 ## Health Check
 
 The container includes a health check that runs every 30 seconds:

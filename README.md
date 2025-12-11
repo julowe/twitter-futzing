@@ -83,6 +83,13 @@ gunicorn --bind 0.0.0.0:5000 --workers 2 webapp:app
 Then open [http://localhost:5000] in your browser to upload files
 and view interactive results.
 
+**Session URLs:**
+
+- When you upload files, a unique session URL is generated (e.g., `/session/abc123.../results`)
+- Bookmark this URL to return to your analysis later
+- Each session is isolated and can only be accessed with the correct unique URL
+- Sessions are automatically cleaned up after 30 days (in Docker deployments)
+
 **Production Notes:**
 
 - Always set the `SECRET_KEY` environment variable when running with multiple workers
@@ -91,6 +98,7 @@ and view interactive results.
 - Use `--workers` appropriate for your server (typically 2-4 workers)
 - Session data is stored in the system temp directory (`/tmp/` on Linux) under
   `twitter_analyzer_sessions/` and shared across workers
+- Old session files (>30 days) are automatically cleaned up in Docker deployments
 
 ### Docker
 
