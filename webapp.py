@@ -1109,6 +1109,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateCharts(chartsHtml) {
         const chartsContainer = document.getElementById('charts-container');
         
+        if (!chartsContainer) {
+            return;
+        }
+        
         // Clear existing charts
         chartsContainer.innerHTML = '';
         
@@ -1147,6 +1151,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateNlpCharts(nlpChartsHtml) {
         const nlpChartsContainer = document.getElementById('nlp-charts-container');
+        
+        if (!nlpChartsContainer) {
+            return;
+        }
         
         // Clear existing NLP charts
         nlpChartsContainer.innerHTML = '';
