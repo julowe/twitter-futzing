@@ -1064,6 +1064,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update charts
             updateCharts(data.charts_html);
             
+            // Update NLP charts
+            updateNlpCharts(data.nlp_charts_html);
+            
             // Update top tweets
             updateTopTweets(data.top_tweets);
             
@@ -1106,6 +1109,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateCharts(chartsHtml) {
         const chartsContainer = document.getElementById('charts-container');
         
+        if (!chartsContainer) {
+            return;
+        }
+        
         // Clear existing charts
         chartsContainer.innerHTML = '';
         
@@ -1124,6 +1131,49 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Execute all script tags from the charts HTML
+        const scripts = tempDiv.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            if (oldScript.src) {
+                newScript.src = oldScript.src;
+            } else {
+                newScript.textContent = oldScript.textContent;
+            }
+            document.body.appendChild(newScript);
+            // Remove the script after a short delay to avoid accumulation
+            setTimeout(() => {
+                if (newScript.parentNode) {
+                    newScript.parentNode.removeChild(newScript);
+                }
+            }, 100);
+        });
+    }
+    
+    function updateNlpCharts(nlpChartsHtml) {
+        const nlpChartsContainer = document.getElementById('nlp-charts-container');
+        
+        if (!nlpChartsContainer) {
+            return;
+        }
+        
+        // Clear existing NLP charts
+        nlpChartsContainer.innerHTML = '';
+        
+        if (!nlpChartsHtml) {
+            return;
+        }
+        
+        // Create a temporary container to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = nlpChartsHtml;
+        
+        // Extract and append all chart containers
+        const chartDivs = tempDiv.querySelectorAll('.chart-container');
+        chartDivs.forEach(chartDiv => {
+            nlpChartsContainer.appendChild(chartDiv.cloneNode(true));
+        });
+        
+        // Execute all script tags from the NLP charts HTML
         const scripts = tempDiv.querySelectorAll('script');
         scripts.forEach(oldScript => {
             const newScript = document.createElement('script');

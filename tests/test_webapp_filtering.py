@@ -147,6 +147,10 @@ def test_api_filter_data_charts_included(client, mock_session_data):
     # Charts HTML should be present (may be empty if no charts can be generated)
     assert 'charts_html' in data
     assert isinstance(data['charts_html'], str)
+    
+    # NLP charts HTML should also be present
+    assert 'nlp_charts_html' in data
+    assert isinstance(data['nlp_charts_html'], str)
 
 
 def test_api_top_tweets_with_filter(client, mock_session_data):
