@@ -341,6 +341,12 @@ BASE_TEMPLATE = """
         .btn-secondary:hover {
             background: #545b62;
         }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
         .file-list {
             margin: 20px 0;
             padding: 0;
@@ -1814,8 +1820,20 @@ def results(session_id):
         stats_parts.append(f"{escape(record_type.title())}: {escape(format_number(count))}")
     header_stats = Markup(" | ".join(stats_parts))
     
-    # Build header button
-    header_button = Markup(f'<a href="{url_for("index")}" class="btn btn-secondary">← Return to File Upload</a> <a href="{url_for("download", session_id=session_id)}" class="btn">📥 Download Output Data</a>')
+    # Build header button - Delete my Data button with confirmation
+    header_button = Markup(f'''
+        <form id="delete-form" method="POST" action="{url_for('delete_session', session_id=session_id)}" style="display: inline;">
+            <button type="button" onclick="confirmDelete()" class="btn btn-danger">🗑️ Delete my Data</button>
+        </form>
+        <a href="{url_for('download', session_id=session_id)}" class="btn">📥 Download Output Data</a>
+        <script>
+        function confirmDelete() {{
+            if (confirm('Are you sure you want to delete all your uploaded files and analysis data? This action cannot be undone.')) {{
+                document.getElementById('delete-form').submit();
+            }}
+        }}
+        </script>
+    ''')
     
     return render_template_string(
         BASE_TEMPLATE,
@@ -2172,6 +2190,20 @@ def download(session_id):
         as_attachment=True,
         download_name=f'twitter_analysis_{timestamp}.zip'
     )
+
+
+@app.route("/session/<session_id>/delete", methods=["POST"])
+def delete_session(session_id):
+    """Delete session data and redirect to home page."""
+    if not is_valid_session_id(session_id):
+        flash("Invalid session ID.", "error")
+        return redirect(url_for("index"))
+    
+    # Delete the session data
+    delete_session_data(session_id)
+    
+    flash("Your data has been deleted successfully.", "success")
+    return redirect(url_for("index"))
 
 
 @app.route("/health")
