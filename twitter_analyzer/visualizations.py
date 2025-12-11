@@ -263,7 +263,7 @@ def create_weekly_avg_sentiment_chart(df: pd.DataFrame) -> Optional[go.Figure]:
     if df_valid.empty:
         return None
     
-    # Resample to weekly average (W-MON means week ending on Monday, so week starts on Monday)
+    # Resample to weekly average (W-MON means week ending on Monday)
     df_valid = df_valid.set_index("created_at")
     weekly_polarity = df_valid.resample("W-MON")["sentiment_polarity"].mean().reset_index()
     weekly_subjectivity = df_valid.resample("W-MON")["sentiment_subjectivity"].mean().reset_index()
