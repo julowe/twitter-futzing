@@ -1410,6 +1410,17 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('apply-filters').addEventListener('click', applyFilters);
     document.getElementById('clear-filters').addEventListener('click', clearFilters);
     
+    // Initialize filter fields to empty on page load to prevent cached values from showing
+    // This ensures fields match the actual filter state (no filters applied initially)
+    document.getElementById('filter-datetime-after').value = '';
+    document.getElementById('filter-datetime-before').value = '';
+    document.getElementById('filter-and-words').value = '';
+    document.getElementById('filter-or-words').value = '';
+    document.getElementById('filter-polarity-min').value = '';
+    document.getElementById('filter-polarity-max').value = '';
+    document.getElementById('filter-subjectivity-min').value = '';
+    document.getElementById('filter-subjectivity-max').value = '';
+    
     // Load More Top Tweets
     const loadMoreTweets = document.getElementById('load-more-tweets');
     if (loadMoreTweets) {
