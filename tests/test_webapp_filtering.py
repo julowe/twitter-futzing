@@ -216,19 +216,24 @@ def test_results_page_clears_filter_fields(client, mock_session_data):
     
     html_content = response.data.decode('utf-8')
     
-    # Verify that the JavaScript initialization code is present
-    # This code clears all filter fields to prevent cached browser values
-    assert "document.getElementById('filter-datetime-after').value = '';" in html_content
-    assert "document.getElementById('filter-datetime-before').value = '';" in html_content
-    assert "document.getElementById('filter-and-words').value = '';" in html_content
-    assert "document.getElementById('filter-or-words').value = '';" in html_content
-    assert "document.getElementById('filter-polarity-min').value = '';" in html_content
-    assert "document.getElementById('filter-polarity-max').value = '';" in html_content
-    assert "document.getElementById('filter-subjectivity-min').value = '';" in html_content
-    assert "document.getElementById('filter-subjectivity-max').value = '';" in html_content
+    # Verify that the clearFilterFieldValues function is present
+    assert "function clearFilterFieldValues()" in html_content
+    
+    # Verify that the function is called on page load
+    assert "clearFilterFieldValues();" in html_content
     
     # Verify the comment explaining why we clear fields
     assert "Initialize filter fields to empty on page load" in html_content
+    
+    # Verify the function includes all filter field IDs
+    assert "'filter-datetime-after'" in html_content
+    assert "'filter-datetime-before'" in html_content
+    assert "'filter-and-words'" in html_content
+    assert "'filter-or-words'" in html_content
+    assert "'filter-polarity-min'" in html_content
+    assert "'filter-polarity-max'" in html_content
+    assert "'filter-subjectivity-min'" in html_content
+    assert "'filter-subjectivity-max'" in html_content
 
 
 def main():
