@@ -765,32 +765,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add upload_id to form data so server can track progress
             formData.append('upload_id', upload_id);
             
-            // Start polling for progress
-            const progressInterval = setInterval(async () => {
-                try {
-                    const response = await fetch('/progress/' + upload_id);
-                    const progress = await response.json();
-                    
-                    if (progress.percent) {
-                        progressFill.style.width = progress.percent + '%';
-                        progressFill.textContent = progress.percent + '%';
-                    }
-                    
-                    if (progress.message) {
-                        progressText.textContent = progress.message;
-                    }
-                    
-                    // Stop polling when complete
-                    if (progress.stage === 'complete' && progress.percent >= 100) {
-                        clearInterval(progressInterval);
-                    }
-                } catch (err) {
-                    console.error('Progress check failed:', err);
-                }
-            }, 500); // Poll every 500ms
-            
             // Upload files
             const xhr = new XMLHttpRequest();
+            
+            let progressInterval = null;
             
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
@@ -802,6 +780,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
+            // When upload completes, start polling for server-side progress
+            xhr.upload.addEventListener('load', () => {
+                progressText.textContent = 'Upload complete, processing...';
+                
+                // Start polling for progress updates from server
+                progressInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch('/progress/' + upload_id);
+                        const progress = await response.json();
+                        
+                        if (progress.percent) {
+                            progressFill.style.width = progress.percent + '%';
+                            progressFill.textContent = progress.percent + '%';
+                        }
+                        
+                        if (progress.message) {
+                            progressText.textContent = progress.message;
+                        }
+                        
+                        // Stop polling when complete
+                        if (progress.stage === 'complete' && progress.percent >= 100) {
+                            clearInterval(progressInterval);
+                        }
+                    } catch (err) {
+                        console.error('Progress check failed:', err);
+                    }
+                }, 500); // Poll every 500ms
+            });
+            
             xhr.onload = function() {
                 if (xhr.status === 200) {
                     try {
@@ -809,29 +816,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (response.success && response.redirect) {
                             // Wait a moment for final progress update, then redirect
                             setTimeout(() => {
-                                clearInterval(progressInterval);
+                                if (progressInterval) clearInterval(progressInterval);
                                 progressText.textContent = 'Complete! Redirecting...';
                                 window.location.href = response.redirect;
                             }, 500);
                         } else if (response.error) {
-                            clearInterval(progressInterval);
+                            if (progressInterval) clearInterval(progressInterval);
                             progressText.textContent = 'Error: ' + response.error;
                             submitBtn.disabled = false;
                         }
                     } catch (e) {
                         // Not JSON, probably a redirect - follow it
-                        clearInterval(progressInterval);
+                        if (progressInterval) clearInterval(progressInterval);
                         window.location.href = xhr.responseURL;
                     }
                 } else {
-                    clearInterval(progressInterval);
+                    if (progressInterval) clearInterval(progressInterval);
                     progressText.textContent = 'Error: ' + xhr.statusText;
                     submitBtn.disabled = false;
                 }
             };
             
             xhr.onerror = function() {
-                clearInterval(progressInterval);
+                if (progressInterval) clearInterval(progressInterval);
                 progressText.textContent = 'Upload failed. Please try again.';
                 submitBtn.disabled = false;
             };
