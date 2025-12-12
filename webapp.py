@@ -1712,9 +1712,9 @@ def upload():
         
         def progress_callback(current, total, message):
             """Update progress bar and print to terminal."""
-            pbar.set_description(f"Processing files ({current}/{total})")
+            # Update progress bar based on number of files completed
             if current > 0:
-                pbar.update(1)
+                pbar.update(current - pbar.n)
             if current == total:
                 pbar.close()
         

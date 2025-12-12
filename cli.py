@@ -429,9 +429,9 @@ Examples:
     
     def progress_callback(current, total, message):
         """Update progress bar."""
-        pbar.set_description(f"Processing ({current}/{total})")
+        # Update progress bar based on number of files completed
         if current > 0:
-            pbar.update(1)
+            pbar.update(current - pbar.n)
         if current == total:
             pbar.close()
     
