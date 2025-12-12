@@ -9,7 +9,6 @@ import os
 import pickle
 import re
 import secrets
-import sys
 import tempfile
 import warnings
 import zipfile
@@ -30,7 +29,6 @@ from flask import (
 )
 from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
-from tqdm import tqdm
 
 import pandas as pd
 
@@ -157,6 +155,11 @@ SESSION_ID_BYTES = 16  # Results in 32-character hex string
 SESSION_DATA_DIR = Path(tempfile.gettempdir()) / "twitter_analyzer_sessions"
 SESSION_DATA_DIR.mkdir(mode=0o700, exist_ok=True)
 
+# Progress tracking for file uploads
+# Stores progress information for active upload sessions
+# Format: {upload_id: {"stage": str, "percent": int, "message": str}}
+upload_progress = {}
+
 
 def is_valid_session_id(session_id: str) -> bool:
     """Validate session ID to prevent directory traversal attacks."""
@@ -218,6 +221,21 @@ def delete_session_data(session_id: str) -> None:
             file_path.unlink()
         except OSError:
             pass
+
+
+def update_progress(upload_id: str, stage: str, percent: int, message: str) -> None:
+    """Update progress for an upload session."""
+    upload_progress[upload_id] = {
+        "stage": stage,
+        "percent": percent,
+        "message": message
+    }
+
+
+def clear_progress(upload_id: str) -> None:
+    """Clear progress data for an upload session."""
+    if upload_id in upload_progress:
+        del upload_progress[upload_id]
 
 
 ALLOWED_EXTENSIONS = {".js", ".json"}
@@ -723,42 +741,101 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (selectedFiles.length === 0) return;
         
-        const formData = new FormData();
-        selectedFiles.forEach(file => {
-            formData.append('files', file);
-        });
-        
         submitBtn.disabled = true;
         progressContainer.style.display = 'block';
+        progressFill.style.width = '5%';
+        progressFill.textContent = '5%';
+        progressText.textContent = 'Uploading files...';
         
         try {
+            // First, get an upload ID for progress tracking
+            const uploadIdResponse = await fetch(form.action + '?get_id=true', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const { upload_id } = await uploadIdResponse.json();
+            
+            // Prepare form data
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            // Start polling for progress
+            const progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/progress/' + upload_id);
+                    const progress = await response.json();
+                    
+                    if (progress.percent) {
+                        progressFill.style.width = progress.percent + '%';
+                        progressFill.textContent = progress.percent + '%';
+                    }
+                    
+                    if (progress.message) {
+                        progressText.textContent = progress.message;
+                    }
+                    
+                    // Stop polling when complete
+                    if (progress.stage === 'complete' && progress.percent >= 100) {
+                        clearInterval(progressInterval);
+                    }
+                } catch (err) {
+                    console.error('Progress check failed:', err);
+                }
+            }, 500); // Poll every 500ms
+            
+            // Upload files
             const xhr = new XMLHttpRequest();
             
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    const percent = Math.round((e.loaded / e.total) * 100);
-                    progressFill.style.width = percent + '%';
-                    progressFill.textContent = percent + '%';
-                    progressText.textContent = 'Uploading...';
+                    // Upload is 0-10% of total progress
+                    const uploadPercent = Math.min(10, Math.round((e.loaded / e.total) * 10));
+                    progressFill.style.width = uploadPercent + '%';
+                    progressFill.textContent = uploadPercent + '%';
+                    progressText.textContent = 'Uploading files...';
                 }
             });
             
             xhr.onload = function() {
                 if (xhr.status === 200) {
-                    progressText.textContent = 'Processing complete! Redirecting...';
-                    window.location.href = xhr.responseURL;
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.success && response.redirect) {
+                            // Wait a moment for final progress update, then redirect
+                            setTimeout(() => {
+                                clearInterval(progressInterval);
+                                progressText.textContent = 'Complete! Redirecting...';
+                                window.location.href = response.redirect;
+                            }, 500);
+                        } else if (response.error) {
+                            clearInterval(progressInterval);
+                            progressText.textContent = 'Error: ' + response.error;
+                            submitBtn.disabled = false;
+                        }
+                    } catch (e) {
+                        // Not JSON, probably a redirect - follow it
+                        clearInterval(progressInterval);
+                        window.location.href = xhr.responseURL;
+                    }
                 } else {
+                    clearInterval(progressInterval);
                     progressText.textContent = 'Error: ' + xhr.statusText;
                     submitBtn.disabled = false;
                 }
             };
             
             xhr.onerror = function() {
+                clearInterval(progressInterval);
                 progressText.textContent = 'Upload failed. Please try again.';
                 submitBtn.disabled = false;
             };
             
             xhr.open('POST', form.action);
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.send(formData);
             
         } catch (err) {
@@ -1667,6 +1744,20 @@ def parse_filter_params():
     return filters
 
 
+@app.route("/progress/<upload_id>")
+def get_progress(upload_id):
+    """Get progress for an upload session."""
+    if not is_valid_session_id(upload_id):
+        return jsonify({"error": "Invalid upload ID"}), 400
+    
+    progress = upload_progress.get(upload_id, {
+        "stage": "initializing",
+        "percent": 0,
+        "message": "Starting..."
+    })
+    return jsonify(progress)
+
+
 @app.route("/")
 def index():
     """Render the upload page."""
@@ -1683,6 +1774,13 @@ def index():
 @app.route("/upload", methods=["POST"])
 def upload():
     """Handle file uploads and process data."""
+    # Generate upload ID for progress tracking
+    upload_id = secrets.token_hex(SESSION_ID_BYTES)
+    
+    # Check if this is a request for the upload ID (AJAX)
+    if request.args.get('get_id') == 'true':
+        return jsonify({"upload_id": upload_id})
+    
     if "files" not in request.files:
         flash("No files selected", "error")
         return redirect(url_for("index"))
@@ -1691,6 +1789,9 @@ def upload():
     if not files or all(f.filename == "" for f in files):
         flash("No files selected", "error")
         return redirect(url_for("index"))
+
+    # Initialize progress
+    update_progress(upload_id, "uploading", 10, "Files uploaded, starting processing...")
 
     # Collect file data
     file_data = []
@@ -1701,22 +1802,19 @@ def upload():
             file_data.append((filename, data))
 
     if not file_data:
+        clear_progress(upload_id)
         flash("No valid .js or .json files found", "error")
         return redirect(url_for("index"))
 
     # Process files
-    # Create progress bar for terminal output
-    # file=sys.stdout ensures it writes to stdout even when running under gunicorn
-    pbar = tqdm(total=len(file_data), desc="Processing files", unit="file", file=sys.stdout)
-    
     try:
+        update_progress(upload_id, "processing", 20, f"Processing {len(file_data)} file(s)...")
+        
+        # Create progress callback for file processing
         def progress_callback(current, total, message):
-            """Update progress bar and print to terminal."""
-            # Update progress bar based on number of files completed
-            if current > 0:
-                pbar.update(current - pbar.n)
-            if current == total:
-                pbar.close()
+            # Map file processing to 20-60% of total progress
+            percent = 20 + int((current / total) * 40)
+            update_progress(upload_id, "processing", percent, message)
         
         df, errors = process_files(file_data, progress_callback=progress_callback)
 
@@ -1725,11 +1823,16 @@ def upload():
                 flash(f"Warning: {err}", "info")
 
         if df.empty:
+            clear_progress(upload_id)
             flash("No records were extracted from the files", "error")
             return redirect(url_for("index"))
 
         # Run sentiment analysis
+        update_progress(upload_id, "analyzing", 65, "Running sentiment analysis...")
         df = analyze_sentiment(df)
+        
+        # Generate charts
+        update_progress(upload_id, "generating_charts", 85, "Generating visualizations...")
         
         # Store in session with unique ID
         session_id = secrets.token_hex(SESSION_ID_BYTES)
@@ -1738,16 +1841,28 @@ def upload():
             "timestamp": datetime.now().isoformat(),
         })
 
+        update_progress(upload_id, "complete", 100, "Processing complete!")
+        
+        # Clear progress after a short delay (client will poll once more)
         flash(f"Successfully processed {len(df):,} records from {len(file_data)} file(s)", "success")
+        
+        # Return JSON response with redirect URL for AJAX requests
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            clear_progress(upload_id)
+            return jsonify({
+                "success": True,
+                "redirect": url_for("results", session_id=session_id)
+            })
+        
+        clear_progress(upload_id)
         return redirect(url_for("results", session_id=session_id))
 
     except Exception as e:
+        clear_progress(upload_id)
         flash(f"Error processing files: {str(e)}", "error")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"success": False, "error": str(e)}), 500
         return redirect(url_for("index"))
-    finally:
-        # Ensure progress bar is closed even if an exception occurs
-        if not pbar.disable and pbar.n < pbar.total:
-            pbar.close()
 
 
 @app.route("/session/<session_id>/results")
