@@ -433,6 +433,67 @@ def test_download_csv_separation():
     return True
 
 
+def test_delete_session():
+    """Test that delete endpoint removes session data and redirects."""
+    print("\ntest_delete_session:")
+    print("-" * 70)
+    
+    with app.test_client() as client:
+        # First, upload a file to create a session
+        test_dir = Path(__file__).parent
+        test_file = test_dir / "mock_tweets.js"
+        
+        with open(test_file, "rb") as f:
+            file_content = f.read()
+        
+        file_storage = FileStorage(
+            stream=io.BytesIO(file_content),
+            filename="mock_tweets.js",
+            content_type="application/javascript"
+        )
+        
+        # Upload file
+        response = client.post(
+            "/upload",
+            data={"files": [file_storage]},
+            content_type="multipart/form-data",
+            follow_redirects=False
+        )
+        
+        assert response.status_code == 302, "Upload should redirect"
+        print("✓ File uploaded successfully")
+        
+        # Extract session_id from redirect location
+        redirect_location = response.location
+        session_id = redirect_location.split("/session/")[1].split("/")[0]
+        print(f"✓ Session ID: {session_id}")
+        
+        # Verify session data exists by accessing results page
+        response = client.get(f"/session/{session_id}/results")
+        assert response.status_code == 200, "Results page should be accessible before deletion"
+        print("✓ Session data exists and is accessible")
+        
+        # Delete the session
+        response = client.post(
+            f"/session/{session_id}/delete",
+            follow_redirects=False
+        )
+        
+        # Should redirect to index
+        assert response.status_code == 302, "Delete should redirect"
+        assert response.location.endswith("/") or "index" in response.location, "Should redirect to index page"
+        print("✓ Delete endpoint redirects to index page")
+        
+        # Verify session data is deleted by trying to access results page
+        response = client.get(f"/session/{session_id}/results")
+        # Should redirect to index because session is gone
+        assert response.status_code == 302, "Results page should redirect after deletion"
+        print("✓ Session data successfully deleted")
+    
+    print("-" * 70)
+    return True
+
+
 def main():
     """Run all webapp tests."""
     print("=" * 70)
@@ -450,6 +511,7 @@ def main():
         test_download_png_generation,
         test_download_includes_wordcloud,
         test_download_csv_separation,
+        test_delete_session,
     ]
     
     for test in tests:
