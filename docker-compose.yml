@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   twitter-analyzer:
@@ -14,8 +14,15 @@ services:
       # Recommended: 2 * num_cores + 1
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
     restart: unless-stopped
+    command: "./docker-entrypoint.sh"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
