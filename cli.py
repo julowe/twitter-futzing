@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
+from tqdm import tqdm
 
 from twitter_analyzer.core import (
     parse_twitter_export_file,
@@ -422,9 +423,19 @@ Examples:
         print("Error: No valid files to process.", file=sys.stderr)
         sys.exit(1)
 
-    # Process files
+    # Process files with progress bar
     print("Processing files...")
-    df, errors = process_files(files)
+    pbar = tqdm(total=len(files), desc="Processing", unit="file")
+    
+    def progress_callback(current, total, message):
+        """Update progress bar."""
+        pbar.set_description(f"Processing ({current}/{total})")
+        if current > 0:
+            pbar.update(1)
+        if current == total:
+            pbar.close()
+    
+    df, errors = process_files(files, progress_callback=progress_callback)
 
     if errors:
         print("\nWarnings:", file=sys.stderr)

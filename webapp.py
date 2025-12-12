@@ -9,6 +9,7 @@ import os
 import pickle
 import re
 import secrets
+import sys
 import tempfile
 import warnings
 import zipfile
@@ -29,6 +30,7 @@ from flask import (
 )
 from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
+from tqdm import tqdm
 
 import pandas as pd
 
@@ -1704,7 +1706,19 @@ def upload():
 
     # Process files
     try:
-        df, errors = process_files(file_data)
+        # Create progress bar for terminal output
+        # file=sys.stdout ensures it writes to stdout even when running under gunicorn
+        pbar = tqdm(total=len(file_data), desc="Processing files", unit="file", file=sys.stdout)
+        
+        def progress_callback(current, total, message):
+            """Update progress bar and print to terminal."""
+            pbar.set_description(f"Processing files ({current}/{total})")
+            if current > 0:
+                pbar.update(1)
+            if current == total:
+                pbar.close()
+        
+        df, errors = process_files(file_data, progress_callback=progress_callback)
 
         if errors:
             for err in errors:
