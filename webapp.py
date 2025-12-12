@@ -762,6 +762,8 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedFiles.forEach(file => {
                 formData.append('files', file);
             });
+            // Add upload_id to form data so server can track progress
+            formData.append('upload_id', upload_id);
             
             // Start polling for progress
             const progressInterval = setInterval(async () => {
@@ -1774,19 +1776,24 @@ def index():
 @app.route("/upload", methods=["POST"])
 def upload():
     """Handle file uploads and process data."""
-    # Generate upload ID for progress tracking
-    upload_id = secrets.token_hex(SESSION_ID_BYTES)
-    
     # Check if this is a request for the upload ID (AJAX)
     if request.args.get('get_id') == 'true':
+        upload_id = secrets.token_hex(SESSION_ID_BYTES)
         return jsonify({"upload_id": upload_id})
     
+    # Get upload_id from request (sent by client) or generate new one
+    upload_id = request.form.get('upload_id') or request.args.get('upload_id')
+    if not upload_id or not is_valid_session_id(upload_id):
+        upload_id = secrets.token_hex(SESSION_ID_BYTES)
+    
     if "files" not in request.files:
+        clear_progress(upload_id)
         flash("No files selected", "error")
         return redirect(url_for("index"))
 
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):
+        clear_progress(upload_id)
         flash("No files selected", "error")
         return redirect(url_for("index"))
 
