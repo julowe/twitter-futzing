@@ -1705,11 +1705,11 @@ def upload():
         return redirect(url_for("index"))
 
     # Process files
+    # Create progress bar for terminal output
+    # file=sys.stdout ensures it writes to stdout even when running under gunicorn
+    pbar = tqdm(total=len(file_data), desc="Processing files", unit="file", file=sys.stdout)
+    
     try:
-        # Create progress bar for terminal output
-        # file=sys.stdout ensures it writes to stdout even when running under gunicorn
-        pbar = tqdm(total=len(file_data), desc="Processing files", unit="file", file=sys.stdout)
-        
         def progress_callback(current, total, message):
             """Update progress bar and print to terminal."""
             # Update progress bar based on number of files completed
@@ -1744,6 +1744,10 @@ def upload():
     except Exception as e:
         flash(f"Error processing files: {str(e)}", "error")
         return redirect(url_for("index"))
+    finally:
+        # Ensure progress bar is closed even if an exception occurs
+        if not pbar.disable and pbar.n < pbar.total:
+            pbar.close()
 
 
 @app.route("/session/<session_id>/results")

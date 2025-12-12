@@ -427,15 +427,20 @@ Examples:
     print("Processing files...")
     pbar = tqdm(total=len(files), desc="Processing", unit="file")
     
-    def progress_callback(current, total, message):
-        """Update progress bar."""
-        # Update progress bar based on number of files completed
-        if current > 0:
-            pbar.update(current - pbar.n)
-        if current == total:
+    try:
+        def progress_callback(current, total, message):
+            """Update progress bar."""
+            # Update progress bar based on number of files completed
+            if current > 0:
+                pbar.update(current - pbar.n)
+            if current == total:
+                pbar.close()
+        
+        df, errors = process_files(files, progress_callback=progress_callback)
+    finally:
+        # Ensure progress bar is closed even if an exception occurs
+        if not pbar.disable and pbar.n < pbar.total:
             pbar.close()
-    
-    df, errors = process_files(files, progress_callback=progress_callback)
 
     if errors:
         print("\nWarnings:", file=sys.stderr)
