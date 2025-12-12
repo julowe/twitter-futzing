@@ -77,6 +77,9 @@ RUN chmod +x docker-entrypoint.sh
 # chown just downstream directories also doesn't work...
 RUN mkdir -p /home/appuser/.config/ && chown -R appuser /home/appuser/.config/
 
+# Create cache dir for matplotlib and fontconfig?
+RUN mkdir -p /home/appuser/.cache && chown -R appuser /home/appuser/.cache
+
 # Switch to non-root user
 USER appuser
 
