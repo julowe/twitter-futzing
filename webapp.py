@@ -769,15 +769,25 @@ document.addEventListener('DOMContentLoaded', function() {
             const xhr = new XMLHttpRequest();
             
             let progressInterval = null;
+            let uploadComplete = false;
             
             xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
+                if (e.lengthComputable && !uploadComplete) {
                     // Upload is 0-10% of total progress
+                    // Only update during upload, stop once upload completes
                     const uploadPercent = Math.min(10, Math.round((e.loaded / e.total) * 10));
                     progressFill.style.width = uploadPercent + '%';
                     progressFill.textContent = uploadPercent + '%';
                     progressText.textContent = 'Uploading files...';
                 }
+            });
+            
+            // Mark upload as complete when it finishes
+            xhr.upload.addEventListener('load', () => {
+                uploadComplete = true;
+                progressFill.style.width = '10%';
+                progressFill.textContent = '10%';
+                progressText.textContent = 'Upload complete, processing...';
             });
             
             // Start polling for progress updates immediately (not just after upload)
@@ -786,15 +796,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     const response = await fetch('/progress/' + upload_id);
                     const progress = await response.json();
                     
-                    // Update percent (check for undefined/null, not falsy since 0 is valid)
-                    if (progress.percent !== undefined && progress.percent !== null) {
-                        progressFill.style.width = progress.percent + '%';
-                        progressFill.textContent = progress.percent + '%';
-                    }
-                    
-                    // Update message (check for undefined/null, not falsy since empty string is valid)
-                    if (progress.message !== undefined && progress.message !== null) {
-                        progressText.textContent = progress.message;
+                    // Only update from server if upload is complete or progress > 10%
+                    // This prevents polling from interfering with upload progress
+                    if (uploadComplete || (progress.percent !== undefined && progress.percent > 10)) {
+                        // Update percent (check for undefined/null, not falsy since 0 is valid)
+                        if (progress.percent !== undefined && progress.percent !== null) {
+                            progressFill.style.width = progress.percent + '%';
+                            progressFill.textContent = progress.percent + '%';
+                        }
+                        
+                        // Update message (check for undefined/null, not falsy since empty string is valid)
+                        if (progress.message !== undefined && progress.message !== null) {
+                            progressText.textContent = progress.message;
+                        }
                     }
                     
                     // Stop polling when complete
