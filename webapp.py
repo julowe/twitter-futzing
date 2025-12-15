@@ -780,34 +780,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            // When upload completes, start polling for server-side progress
-            xhr.upload.addEventListener('load', () => {
-                progressText.textContent = 'Upload complete, processing...';
-                
-                // Start polling for progress updates from server
-                progressInterval = setInterval(async () => {
-                    try {
-                        const response = await fetch('/progress/' + upload_id);
-                        const progress = await response.json();
-                        
-                        if (progress.percent) {
-                            progressFill.style.width = progress.percent + '%';
-                            progressFill.textContent = progress.percent + '%';
-                        }
-                        
-                        if (progress.message) {
-                            progressText.textContent = progress.message;
-                        }
-                        
-                        // Stop polling when complete
-                        if (progress.stage === 'complete' && progress.percent >= 100) {
-                            clearInterval(progressInterval);
-                        }
-                    } catch (err) {
-                        console.error('Progress check failed:', err);
+            // Start polling for progress updates immediately (not just after upload)
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/progress/' + upload_id);
+                    const progress = await response.json();
+                    
+                    // Update percent (check for undefined/null, not falsy since 0 is valid)
+                    if (progress.percent !== undefined && progress.percent !== null) {
+                        progressFill.style.width = progress.percent + '%';
+                        progressFill.textContent = progress.percent + '%';
                     }
-                }, 500); // Poll every 500ms
-            });
+                    
+                    // Update message (check for undefined/null, not falsy since empty string is valid)
+                    if (progress.message !== undefined && progress.message !== null) {
+                        progressText.textContent = progress.message;
+                    }
+                    
+                    // Stop polling when complete
+                    if (progress.stage === 'complete' && progress.percent >= 100) {
+                        clearInterval(progressInterval);
+                    }
+                } catch (err) {
+                    console.error('Progress check failed:', err);
+                }
+            }, 300); // Poll every 300ms for more responsive updates
             
             xhr.onload = function() {
                 if (xhr.status === 200) {
